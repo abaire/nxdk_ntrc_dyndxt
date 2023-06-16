@@ -131,3 +131,10 @@ target_link_libraries(
         dynamic_dxt_loader_lib
         xbdm_lib
 )
+
+install(
+        FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/libntrc_dyndxt.dll
+        DESTINATION
+        lib
+)
