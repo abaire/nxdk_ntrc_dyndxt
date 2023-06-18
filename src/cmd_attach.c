@@ -44,6 +44,6 @@ HRESULT HandleAttach(const char *command, char *response, DWORD response_len,
   CPDelete(&cp);
 
   HRESULT ret = TracerCreate(&config);
-  sprintf(response, "Tracer created");
+  snprintf(response, response_len, "Tracer created");
   return ret;
 }
