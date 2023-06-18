@@ -54,7 +54,8 @@ jobs:
         run: |
           cd nxdk_ntrc_dyndxt
           export NXDK_DIR="${GITHUB_WORKSPACE}/nxdk"
-          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          export CMAKE_OPTS="-DCMAKE_TOOLCHAIN_FILE=${NXDK_DIR}/share/toolchain-nxdk.cmake"
+          cmake -B build -DCMAKE_BUILD_TYPE=Release "${CMAKE_OPTS}"
           cmake --build build -- -j$(grep -c processor /proc/cpuinfo)
       - name: Test
         run: |
@@ -104,7 +105,8 @@ jobs:
           cd nxdk_ntrc_dyndxt
           export PATH="$(brew --prefix llvm)/bin:$PATH"
           export NXDK_DIR="${GITHUB_WORKSPACE}/nxdk"
-          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          export CMAKE_OPTS="-DCMAKE_TOOLCHAIN_FILE=${NXDK_DIR}/share/toolchain-nxdk.cmake"
+          cmake -B build -DCMAKE_BUILD_TYPE=Release "${CMAKE_OPTS}"
           cmake --build build -- -j
       - name: Test
         run: |
