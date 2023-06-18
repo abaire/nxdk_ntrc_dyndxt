@@ -44,6 +44,10 @@ HRESULT HandleAttach(const char *command, char *response, DWORD response_len,
   CPDelete(&cp);
 
   HRESULT ret = TracerCreate(&config);
-  snprintf(response, response_len, "Tracer created");
+  if (XBOX_SUCCESS(ret)) {
+    snprintf(response, response_len, "Tracer created");
+  } else {
+    snprintf(response, response_len, "Tracer creation failed");
+  }
   return ret;
 }

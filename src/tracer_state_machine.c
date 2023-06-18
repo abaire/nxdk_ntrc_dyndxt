@@ -101,7 +101,9 @@ void TracerGetDefaultConfig(TracerConfig *config) {
 }
 
 HRESULT TracerCreate(const TracerConfig *config) {
-  // TODO: Verify that the state is something reasonable.
+  if (state_machine.state > STATE_UNINITIALIZED) {
+    return XBOX_E_EXISTS;
+  }
 
   state_machine.config = *config;
   state_machine.state = STATE_INIITIALIZING;
