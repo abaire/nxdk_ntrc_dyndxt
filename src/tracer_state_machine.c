@@ -377,7 +377,7 @@ static void WaitForStablePushBufferState(void) {
 // Sets the DMA_PUSH_ADDR to the given target, storing the old value.
 static void ExchangeDMAPushAddress(DWORD target) {
   DWORD prev_target = state_machine.target_dma_push_addr;
-  DWORD prev_real = state_machine.real_dma_push_addr;
+  //  DWORD prev_real = state_machine.real_dma_push_addr;
 
   DWORD real = ExchangeDWORD(DMA_PUSH_ADDR, target);
   state_machine.target_dma_push_addr = target;

@@ -6,7 +6,7 @@ set(CMAKE_SHARED_LIBRARY_SUFFIX ".dll")
 set(CMAKE_SHARED_LIBRARY_SUFFIX_C ".dll")
 set(CMAKE_SHARED_LIBRARY_SUFFIX_CXX ".dll")
 
-set(CMAKE_VERBOSE_MAKEFILE TRUE)
+set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "ON")
 
 set(CMAKE_CXX_STANDARD 17)
 include(CMakePushCheckState)
@@ -15,8 +15,8 @@ include(CheckSymbolExists)
 include (ExternalProject)
 include(FindPkgConfig)
 
-set(CMAKE_CXX_FLAGS_DEBUG "-g -Og")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+set(CMAKE_C_FLAGS_DEBUG "-g -Og -Wall")
+set(CMAKE_C_FLAGS_RELEASE "-O3 -Wall")
 
 # Import the dynamic DXT loader, which provides some shared functions.
 ExternalProject_Add(
