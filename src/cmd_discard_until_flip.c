@@ -13,7 +13,7 @@ HRESULT HandleDiscardUntilFlip(const char *command, char *response,
   if (XBOX_SUCCESS(ret)) {
     strncat(response, "Waiting until next framebuffer flip...", response_len);
   } else {
-    sprintf(response, "Failed: %X", ret);
+    snprintf(response, response_len, "Failed: %X", ret);
   }
 
   return ret;

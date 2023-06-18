@@ -7,6 +7,6 @@
 HRESULT HandleDetach(const char *command, char *response, DWORD response_len,
                      CommandContext *ctx) {
   TracerDestroy();
-  sprintf(response, "Tracer stopped and destroyed");
+  snprintf(response, response_len, "Tracer shutdown requested");
   return XBOX_S_OK;
 }

@@ -15,7 +15,7 @@ HRESULT HandleWaitForStablePushBufferState(const char *command, char *response,
   if (XBOX_SUCCESS(ret)) {
     strncat(response, "Waiting for stable pushbuffer state...", response_len);
   } else {
-    sprintf(response, "Failed: %X", ret);
+    snprintf(response, response_len, "Failed: %X", ret);
   }
 
   return ret;

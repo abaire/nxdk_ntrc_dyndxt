@@ -8,9 +8,10 @@ HRESULT HandleGetDMAAddrs(const char *command, char *response,
                           DWORD response_len, CommandContext *ctx) {
   DWORD push_addr, pull_addr;
   if (!TracerGetDMAAddresses(&push_addr, &pull_addr)) {
-    sprintf(response, "invalid");
+    snprintf(response, response_len, "invalid");
   } else {
-    sprintf(response, "push=0x%X pull=0x%X", push_addr, pull_addr);
+    snprintf(response, response_len, "push=0x%X pull=0x%X", push_addr,
+             pull_addr);
   }
   return XBOX_S_OK;
 }

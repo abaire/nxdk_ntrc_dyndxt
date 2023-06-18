@@ -106,7 +106,7 @@ HRESULT TracerCreate(const TracerConfig *config) {
   }
 
   state_machine.config = *config;
-  state_machine.state = STATE_INIITIALIZING;
+  state_machine.state = STATE_INITIALIZING;
   state_machine.request = REQ_NONE;
 
   if (config->rdi_capture_enabled || config->surface_color_capture_enabled ||
@@ -238,7 +238,7 @@ HRESULT TracerBeginDiscardUntilFlip(void) {
 
 static DWORD __attribute__((stdcall))
 TracerThreadMain(LPVOID lpThreadParameter) {
-  while (TracerGetState() == STATE_INIITIALIZING) {
+  while (TracerGetState() == STATE_INITIALIZING) {
     Sleep(1);
   }
 
@@ -253,7 +253,7 @@ TracerThreadMain(LPVOID lpThreadParameter) {
 
   while (1) {
     TracerState state = TracerGetState();
-    if (state < STATE_INIITIALIZING) {
+    if (state < STATE_INITIALIZING) {
       break;
     }
 

@@ -59,6 +59,6 @@ static HRESULT_API ProcessCommand(const char *command, char *response,
 
 static void OnTracerStateChanged(TracerState new_state) {
   char buf[256];
-  sprintf(buf, "%s!new_state=0x%X", kHandlerName, new_state);
+  snprintf(buf, sizeof(buf), "%s!new_state=0x%X", kHandlerName, new_state);
   DmSendNotificationString(buf);
 }

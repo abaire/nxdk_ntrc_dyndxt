@@ -134,7 +134,7 @@ target_link_libraries(
 
 install(
         FILES
-        ${CMAKE_CURRENT_BINARY_DIR}/libntrc_dyndxt.dll
+        ${CMAKE_CURRENT_BINARY_DIR}/lib${TARGET}.dll
         DESTINATION
         lib
 )
