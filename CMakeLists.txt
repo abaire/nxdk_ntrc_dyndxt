@@ -94,6 +94,7 @@ add_library(
         src/exchange_dword.h
         src/kick_fifo.c
         src/kick_fifo.h
+        src/ntrc_dyndxt.h
         src/pushbuffer_command.c
         src/pushbuffer_command.h
         src/register_defs.h
@@ -137,4 +138,11 @@ install(
         ${CMAKE_CURRENT_BINARY_DIR}/lib${TARGET}.dll
         DESTINATION
         lib
+)
+
+install(
+        FILES
+        src/ntrc_dyndxt.h
+        DESTINATION
+        include
 )
