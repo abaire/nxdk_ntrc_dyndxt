@@ -1,6 +1,6 @@
 # nxdk_ntrc_dyndxt
 
-Provides functions to trace ntrc interactions using the
+Provides functions to trace nv2a (GPU) interactions using the
 [nxdk_dyndxt](https://github.com/abaire/nxdk_dyndxt) dynamic loader.
 This project was heavily inspired by [nv2a-trace](https://github.com/XboxDev/nv2a-trace).
 
