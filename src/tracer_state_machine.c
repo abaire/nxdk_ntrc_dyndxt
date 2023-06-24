@@ -139,7 +139,7 @@ HRESULT TracerCreate(const TracerConfig *config) {
   return XBOX_S_OK;
 }
 
-void TracerDestroy(void) {
+void TracerShutdown(void) {
   if (state_machine.state == STATE_UNINITIALIZED) {
     return;
   }

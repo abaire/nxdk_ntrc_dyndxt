@@ -15,8 +15,10 @@ include(CheckSymbolExists)
 include (ExternalProject)
 include(FindPkgConfig)
 
-set(CMAKE_C_FLAGS_DEBUG "-g -Og -Wall")
-set(CMAKE_C_FLAGS_RELEASE "-O3 -Wall")
+set(CMAKE_C_CREATE_SHARED_LIBRARY "${NXDK_DIR}/bin/${TOOLCHAIN_PREFIX}-link <CMAKE_C_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -out:<TARGET> <LINK_LIBRARIES>")
+set(CMAKE_CXX_CREATE_SHARED_LIBRARY "${NXDK_DIR}/bin/${TOOLCHAIN_PREFIX}-link <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -out:<TARGET> <LINK_LIBRARIES>")
+
+add_subdirectory(devhost)
 
 # Import the dynamic DXT loader, which provides some shared functions.
 ExternalProject_Add(
@@ -65,15 +67,75 @@ set_target_properties(
 )
 add_dependencies(dynamic_dxt_loader_lib dyndxt_loader)
 
-
-set(TARGET ntrc_dyndxt)
-
+set(LIB_TARGET ntrc_dyndxt_static)
 add_library(
-        ${TARGET}
-        SHARED
+        "${LIB_TARGET}"
+        STATIC
         src/util/circular_buffer.c
         src/util/circular_buffer.h
         src/util/circular_buffer_impl.h
+        src/exchange_dword.c
+        src/exchange_dword.h
+        src/kick_fifo.c
+        src/kick_fifo.h
+        src/ntrc_dyndxt.h
+        src/pushbuffer_command.c
+        src/pushbuffer_command.h
+        src/register_defs.h
+        src/tracer_state_machine.c
+        src/tracer_state_machine.h
+        src/xbox_helper.c
+        src/xbox_helper.h
+        third_party/xemu/hw/xbox/nv2a/nv2a_regs.h
+        "${dyndxt_include_dir}/xbdm.h"
+        "${dyndxt_include_dir}/xbdm_err.h"
+)
+target_include_directories(
+        "${LIB_TARGET}"
+        PUBLIC
+        src
+        third_party
+        "${NXDK_DIR}"
+        "${dyndxt_include_dir}"
+)
+target_link_options(
+        "${LIB_TARGET}"
+        PUBLIC
+        /machine:i386
+)
+target_link_libraries(
+        "${LIB_TARGET}"
+        PUBLIC
+        dynamic_dxt_loader_lib
+        xbdm_lib
+)
+
+if(CMAKE_BUILD_TYPE MATCHES Debug)
+    target_compile_options(
+            "${LIB_TARGET}"
+            PRIVATE
+            -g
+            -O0
+            -gdwarf-4
+            -Wall
+            -fstandalone-debug
+    )
+    target_link_options("${LIB_TARGET}" PRIVATE "/debug:full")
+else()
+    target_compile_options(
+            "${LIB_TARGET}"
+            PRIVATE
+            -O3
+            -Wall
+    )
+    target_link_options("${LIB_TARGET}" PRIVATE "/debug:none")
+endif()
+
+
+set(TARGET ntrc_dyndxt)
+add_library(
+        "${TARGET}"
+        SHARED
         src/cmd_attach.c
         src/cmd_attach.h
         src/cmd_detach.c
@@ -90,48 +152,53 @@ add_library(
         src/cmd_wait_for_stable_push_buffer_state.h
         src/dxtmain.c
         src/dxtmain.h
-        src/exchange_dword.c
-        src/exchange_dword.h
-        src/kick_fifo.c
-        src/kick_fifo.h
-        src/ntrc_dyndxt.h
-        src/pushbuffer_command.c
-        src/pushbuffer_command.h
-        src/register_defs.h
-        src/tracer_state_machine.c
-        src/tracer_state_machine.h
-        src/xbox_helper.c
-        src/xbox_helper.h
-        third_party/xemu/hw/xbox/nv2a/nv2a_regs.h
-        ${dyndxt_include_dir}/command_processor_util.h
-        ${dyndxt_include_dir}/nxdk_dxt_dll_main.h
-        ${dyndxt_include_dir}/xbdm.h
-        ${dyndxt_include_dir}/xbdm_err.h
+        "${dyndxt_include_dir}/command_processor_util.h"
+        "${dyndxt_include_dir}/nxdk_dxt_dll_main.h"
 )
+
 target_include_directories(
-        ${TARGET}
+        "${TARGET}"
         PRIVATE
-        src
         third_party
-        ${NXDK_DIR}
-        ${dyndxt_include_dir}
+        "${NXDK_DIR}"
+        "${dyndxt_include_dir}"
 )
+
 target_link_options(
-        ${TARGET}
+        "${TARGET}"
         PUBLIC
-        -Wl,-machine:i386
-        -B ${NXDK_DIR}/bin
-        -Wl,-entry:DXTMainCRTStartup@0
-        -Wl,-dynamicbase
-        -Wl,-fixed:no
-        -v
+        /machine:i386
+        /entry:DXTMainCRTStartup@0
+        /dynamicbase
+        /fixed:no
 )
 target_link_libraries(
-        ${TARGET}
+        "${TARGET}"
         PRIVATE
-        dynamic_dxt_loader_lib
-        xbdm_lib
+        "${LIB_TARGET}"
 )
+
+if(CMAKE_BUILD_TYPE MATCHES Debug)
+    target_compile_options(
+            "${TARGET}"
+            PRIVATE
+            -g
+            -O0
+            -gdwarf-4
+            -Wall
+            -fstandalone-debug
+    )
+    target_link_options("${TARGET}" PRIVATE "/debug:full")
+else()
+    target_compile_options(
+            "${TARGET}"
+            PRIVATE
+            -O3
+            -Wall
+    )
+    target_link_options("${TARGET}" PRIVATE "/debug:none")
+endif()
+
 
 install(
         FILES

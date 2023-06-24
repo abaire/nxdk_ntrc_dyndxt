@@ -1,0 +1,3 @@
+[submodule "devhost/third_party/printf"]
+	path = devhost/third_party/printf
+	url = https://github.com/mpaland/printf.git

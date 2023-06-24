@@ -3,6 +3,10 @@
 
 #include <windows.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct PushBufferCommand {
   // Whether the data contained in this struct is valid or not.
   BOOL valid;
@@ -61,5 +65,9 @@ DWORD ParsePushBufferCommandTraceInfo(DWORD pull_addr,
                                       BOOL discard_parameters);
 
 void DeletePushBufferCommandTraceInfo(PushBufferCommandTraceInfo *info);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif
 
 #endif  // NXDK_NTRC_DYNDXT_PUSHBUFFER_COMMAND_H_
