@@ -5,6 +5,10 @@
 
 #include "exchange_dword.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct DMAState {
   BOOL non_increasing;
   DWORD method;
@@ -42,5 +46,9 @@ void GetDMAState(DMAState *result);
 
 // Returns the current PGRAPH graphics class.
 DWORD FetchActiveGraphicsClass(void);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif
 
 #endif  // NV2A_TRACE_XBOX_HELPER_H

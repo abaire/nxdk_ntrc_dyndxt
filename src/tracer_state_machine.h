@@ -5,6 +5,10 @@
 
 #include "ntrc_dyndxt.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct TracerConfig {
   // Number of bytes to reserve for pgraph command capture.
   DWORD pgraph_circular_buffer_size;
@@ -28,17 +32,28 @@ typedef struct TracerConfig {
 // Callback to be invoked when the tracer state changes.
 typedef void (*NotifyStateChangedHandler)(TracerState);
 
+//! Initializes the tracer library.
+//! The given function will be called anytime the tracer state machine changes
+//! state.
 HRESULT TracerInitialize(NotifyStateChangedHandler on_notify_state_changed);
 
+//! Populates the given TracerConfig with default values.
 void TracerGetDefaultConfig(TracerConfig *config);
 
+//! Creates a tracer instance with the given config.
 HRESULT TracerCreate(const TracerConfig *config);
-void TracerDestroy(void);
+
+//! Requests that the tracer shutdown.
+void TracerShutdown(void);
 
 TracerState TracerGetState(void);
 BOOL TracerGetDMAAddresses(DWORD *push_addr, DWORD *pull_addr);
 
 HRESULT TracerBeginWaitForStablePushBufferState(void);
 HRESULT TracerBeginDiscardUntilFlip(void);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif
 
 #endif  // NV2A_TRACE_TRACER_STATE_MACHINE_H
