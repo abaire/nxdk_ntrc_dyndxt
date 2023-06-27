@@ -78,25 +78,25 @@ set_target_properties(
 )
 add_dependencies(dynamic_dxt_loader_lib dyndxt_loader)
 
-set(LIB_TARGET ntrc_dyndxt_static)
+set(LIB_TARGET tracelib)
 add_library(
         "${LIB_TARGET}"
         STATIC
         src/util/circular_buffer.c
         src/util/circular_buffer.h
         src/util/circular_buffer_impl.h
-        src/exchange_dword.c
-        src/exchange_dword.h
-        src/kick_fifo.c
-        src/kick_fifo.h
-        src/ntrc_dyndxt.h
-        src/pushbuffer_command.c
-        src/pushbuffer_command.h
-        src/register_defs.h
-        src/tracer_state_machine.c
-        src/tracer_state_machine.h
-        src/xbox_helper.c
-        src/xbox_helper.h
+        src/tracelib/exchange_dword.c
+        src/tracelib/exchange_dword.h
+        src/tracelib/kick_fifo.c
+        src/tracelib/kick_fifo.h
+        src/tracelib/ntrc_dyndxt.h
+        src/tracelib/pushbuffer_command.c
+        src/tracelib/pushbuffer_command.h
+        src/tracelib/register_defs.h
+        src/tracelib/tracer_state_machine.c
+        src/tracelib/tracer_state_machine.h
+        src/tracelib/xbox_helper.c
+        src/tracelib/xbox_helper.h
         third_party/xemu/hw/xbox/nv2a/nv2a_regs.h
         "${dyndxt_include_dir}/xbdm.h"
         "${dyndxt_include_dir}/xbdm_err.h"
@@ -220,7 +220,7 @@ install(
 
 install(
         FILES
-        src/ntrc_dyndxt.h
+        src/tracelib/ntrc_dyndxt.h
         DESTINATION
         include
 )

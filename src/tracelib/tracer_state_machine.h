@@ -3,7 +3,7 @@
 
 #include <windows.h>
 
-#include "ntrc_dyndxt.h"
+#include "tracelib/ntrc_dyndxt.h"
 
 #ifdef __cplusplus
 extern "C" {
