@@ -7,7 +7,7 @@
 #include "nxdk_ext.h"
 #include "pbkit_ext.h"
 #include "renderer.h"
-#include "tracer_state_machine.h"
+#include "tracelib/tracer_state_machine.h"
 #include "xbdm.h"
 
 static constexpr int kFramebufferWidth = 640;

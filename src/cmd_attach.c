@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #include "command_processor_util.h"
-#include "tracer_state_machine.h"
+#include "tracelib/tracer_state_machine.h"
 
 HRESULT HandleAttach(const char *command, char *response, DWORD response_len,
                      CommandContext *ctx) {

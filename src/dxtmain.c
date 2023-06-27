@@ -10,9 +10,9 @@
 #include "cmd_get_state.h"
 #include "cmd_hello.h"
 #include "cmd_wait_for_stable_push_buffer_state.h"
-#include "ntrc_dyndxt.h"
 #include "nxdk_dxt_dll_main.h"
-#include "tracer_state_machine.h"
+#include "tracelib/ntrc_dyndxt.h"
+#include "tracelib/tracer_state_machine.h"
 
 // Command prefix that will be handled by this processor.
 // Keep in sync with value in ntrc.py

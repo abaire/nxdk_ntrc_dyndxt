@@ -81,7 +81,7 @@ endif()
 
 target_link_libraries(
         "${TARGET}"
-        ntrc_dyndxt_static
+        tracelib
         NXDK::NXDK
         NXDK::NXDK_CXX
 )

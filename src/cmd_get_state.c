@@ -2,7 +2,7 @@
 
 #include <stdio.h>
 
-#include "tracer_state_machine.h"
+#include "tracelib/tracer_state_machine.h"
 
 HRESULT HandleGetState(const char *command, char *response, DWORD response_len,
                        CommandContext *ctx) {

@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "tracer_state_machine.h"
+#include "tracelib/tracer_state_machine.h"
 #include "xbdm.h"
 
 HRESULT HandleWaitForStablePushBufferState(const char *command, char *response,

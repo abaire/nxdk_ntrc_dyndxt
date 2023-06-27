@@ -1,9 +1,9 @@
 #include "tracer_state_machine.h"
 
-#include "exchange_dword.h"
-#include "kick_fifo.h"
 #include "pushbuffer_command.h"
 #include "register_defs.h"
+#include "tracelib/exchange_dword.h"
+#include "tracelib/kick_fifo.h"
 #include "util/circular_buffer.h"
 #include "xbdm.h"
 #include "xbox_helper.h"

@@ -3,7 +3,7 @@
 
 #include <windows.h>
 
-#include "exchange_dword.h"
+#include "tracelib/exchange_dword.h"
 
 #ifdef __cplusplus
 extern "C" {
