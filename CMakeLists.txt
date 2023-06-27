@@ -20,6 +20,17 @@ set(CMAKE_CXX_CREATE_SHARED_LIBRARY "${NXDK_DIR}/bin/${TOOLCHAIN_PREFIX}-link <C
 
 add_subdirectory(devhost)
 
+# The tests are built using the host toolchain rather than the target (nxdk).
+ExternalProject_Add(
+        ntrc_dyndxt_tests
+        PREFIX ntrc_dyndxt_tests
+        SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/test
+        BINARY_DIR ntrc_dyndxt_tests
+        INSTALL_COMMAND ""
+        EXCLUDE_FROM_ALL FALSE
+        BUILD_ALWAYS TRUE
+)
+
 # Import the dynamic DXT loader, which provides some shared functions.
 ExternalProject_Add(
         dyndxt_loader
