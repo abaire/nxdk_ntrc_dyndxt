@@ -64,10 +64,10 @@ inline uint32_t CBAvailable(CircularBuffer handle) {
 inline uint32_t CBFreeSpace(CircularBuffer handle) {
   CircularBufferImpl *cb = (CircularBufferImpl *)handle;
   if (cb->read > cb->write) {
-    return cb->read - cb->write - 1;
+    return (cb->read - 1) - cb->write;
   }
 
-  return cb->size + cb->read - cb->write - 1;
+  return (cb->size - 1) - (cb->write - cb->read);
 }
 
 uint32_t CBDiscard(CircularBuffer handle, uint32_t bytes) {
@@ -129,7 +129,7 @@ static void Write(CircularBufferImpl *cb, const void *data,
                   uint32_t data_size) {
   // data_size will have already been adjusted if the read pointer is ahead of
   // the write, so the only test is against the underlying buffer end.
-  uint32_t bytes_to_end = (cb->size - 1) - cb->write;
+  uint32_t bytes_to_end = cb->size - cb->write;
   if (bytes_to_end < data_size) {
     memcpy(cb->buffer + cb->write, data, bytes_to_end);
     data += bytes_to_end;
@@ -146,7 +146,7 @@ static void Write(CircularBufferImpl *cb, const void *data,
 static void Read(CircularBufferImpl *cb, void *buffer, uint32_t size) {
   // size will have already been adjusted if the write pointer is ahead of the
   // read, so the only test is against the underlying buffer end.
-  uint32_t bytes_to_end = (cb->size - 1) - cb->read;
+  uint32_t bytes_to_end = cb->size - cb->read;
   if (bytes_to_end < size) {
     memcpy(buffer, cb->buffer + cb->read, bytes_to_end);
     buffer += bytes_to_end;
