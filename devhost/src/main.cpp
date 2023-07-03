@@ -17,6 +17,9 @@ static constexpr int kFramebufferHeight = 480;
 static constexpr int kTextureWidth = 256;
 static constexpr int kTextureHeight = 256;
 
+//! Send nop commands, used as a mechanism to mark interesting things it the
+//! pgraph log.
+static void Mark(uint32_t num_nops = 8);
 static void Initialize(Renderer& renderer);
 static void CreateGeometry(Renderer& renderer);
 
@@ -32,8 +35,8 @@ static void OnTracerStateChanged(TracerState new_state) {
     break
 
   switch (new_state) {
-    HANDLE_STATE(STATE_FATAL_ERROR_DISCARDING_FAILED);
-    HANDLE_STATE(STATE_FATAL_ERROR_PROCESS_PUSH_BUFFER_COMMAND_FAILED);
+    HANDLE_STATE(STATE_FATAL_DISCARDING_FAILED);
+    HANDLE_STATE(STATE_FATAL_PROCESS_PUSH_BUFFER_COMMAND_FAILED);
     HANDLE_STATE(STATE_SHUTDOWN_REQUESTED);
     HANDLE_STATE(STATE_SHUTDOWN);
     HANDLE_STATE(STATE_UNINITIALIZED);
@@ -225,6 +228,8 @@ int main() {
     renderer.DrawArrays(renderer.POSITION | renderer.NORMAL | renderer.DIFFUSE |
                         renderer.SPECULAR);
 
+    Mark();
+
     renderer.FinishDraw();
 
     has_rendered_frame = true;
@@ -235,6 +240,14 @@ int main() {
   }
 
   return 0;
+}
+
+static void Mark(uint32_t num_nops) {
+  auto p = pb_begin();
+  for (auto i = 0; i < num_nops; ++i) {
+    p = pb_push1(p, NV097_NO_OPERATION, 0);
+  }
+  pb_end(p);
 }
 
 static void Initialize(Renderer& renderer) {

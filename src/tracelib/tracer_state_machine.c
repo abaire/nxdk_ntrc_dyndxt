@@ -441,12 +441,12 @@ static void RunFIFO(DWORD pull_addr_target) {
     }
 
 #ifdef VERBOSE_DEBUG
-    DbgPrint("RunFIFO: At 0x%08X, target is 0x%08X (Real: 0x%08X)\n",
-             state_machine.real_dma_pull_addr, pull_addr_target,
-             state_machine.real_dma_push_addr);
-
-    DbgPrint("> PULL ADDR: 0x%X  PUSH: 0x%X\n", GetDMAPullAddress(),
-             GetDMAPushAddress());
+    DbgPrint(
+        "RunFIFO: At 0x%08X, target is 0x%08X (Real: 0x%08X)\n"
+        "         PULL ADDR: 0x%X  PUSH: 0x%X\n",
+        state_machine.real_dma_pull_addr, pull_addr_target,
+        state_machine.real_dma_push_addr, GetDMAPullAddress(),
+        GetDMAPushAddress());
 #endif
 
     // Disable PGRAPH, so it can't run anything from CACHE.
@@ -553,8 +553,7 @@ static DWORD ProcessPushBufferCommand(DWORD *dma_pull_addr,
   }
 
   if (!method_info->valid) {
-    // self.html_log.log(["WARNING", "No method. Going to 0x%08X" % post_addr])
-    DbgPrint("WARNING", "No method. Going to 0x%08X", post_addr);
+    DbgPrint("WARNING: No method. Going to 0x%08X", post_addr);
     unprocessed_bytes = 4;
   } else {
     // Mark the size of the instruction + any associated parameters.
@@ -622,6 +621,11 @@ static void DiscardUntilFramebufferFlip(void) {
     return;
   }
 
+  if (!state_machine.dma_addresses_valid) {
+    SetState(STATE_FATAL_NOT_IN_STABLE_STATE);
+    return;
+  }
+
   SetState(STATE_DISCARDING_UNTIL_FLIP);
 
   DWORD bytes_queued = 0;
@@ -633,14 +637,22 @@ static void DiscardUntilFramebufferFlip(void) {
     DWORD unprocessed_bytes =
         ProcessPushBufferCommand(&dma_pull_addr, &info, TRUE, TRUE);
     if (unprocessed_bytes == 0xFFFFFFFF) {
-      SetState(STATE_FATAL_ERROR_PROCESS_PUSH_BUFFER_COMMAND_FAILED);
+      SetState(STATE_FATAL_PROCESS_PUSH_BUFFER_COMMAND_FAILED);
       return;
     }
     bytes_queued += unprocessed_bytes;
 
     BOOL is_flip = info.valid && info.graphics_class == 0x97 &&
-                   info.command.method == NV097_FLIP_STALL;
+                   (info.command.method == NV097_FLIP_STALL ||
+                    info.command.method == NV097_FLIP_INCREMENT_WRITE);
     BOOL is_empty = dma_pull_addr == state_machine.real_dma_push_addr;
+
+#ifdef VERBOSE_DEBUG
+    if (info.valid & !is_flip && info.graphics_class == 0x97) {
+      DbgPrint("Discarding command 0x%X - 0x%X\n", info.graphics_class,
+               info.command.method);
+    }
+#endif  // VERBOSE_DEBUG
 
     // Avoid queuing up too many bytes: while the buffer is being processed,
     // D3D might fixup the buffer if GET is still too far away.
@@ -668,7 +680,7 @@ static void DiscardUntilFramebufferFlip(void) {
         DbgPrint(
             "ERROR: Corrupt state. HW (0x%08X) is not at parser (0x%08X)\n",
             dma_pull_addr_real, dma_pull_addr);
-        SetState(STATE_FATAL_ERROR_DISCARDING_FAILED);
+        SetState(STATE_FATAL_DISCARDING_FAILED);
         return;
       }
     }
