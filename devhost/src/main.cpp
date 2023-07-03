@@ -58,6 +58,16 @@ TracerThreadMain(LPVOID lpThreadParameter) {
   return 0;
 }
 
+static float wrap_color(float val) {
+  while (val < 0.f) {
+    val += 1.f;
+  }
+  while (val > 1.f) {
+    val -= 1.f;
+  }
+  return val;
+}
+
 int main() {
   XVideoSetMode(kFramebufferWidth, kFramebufferHeight, 32, REFRESH_DEFAULT);
 
@@ -90,6 +100,10 @@ int main() {
   // Note that this is intentionally inefficient, the intent is to test the
   // pgraph tracer, so there is more frequent interaction with the pushbuffer
   // than necessary.
+
+  float r = 1.0f;
+  float g = 0.25f;
+  float b = 0.33f;
   while (true) {
     Initialize(renderer);
 
@@ -107,24 +121,12 @@ int main() {
                  NV097_SET_LIGHT_ENABLE_MASK_LIGHT0_INFINITE);
 
     // Ambient color comes from the material's diffuse color.
-    pb_push_to(SUBCH_3D, p++, NV097_SET_LIGHT_AMBIENT_COLOR, 9);
-    *(p++) = 0x0;
-    *(p++) = 0x0;
-    *(p++) = 0x0;
-    *(p++) = 0x3F6EEEEF;  // 0.933333 0xEE
-    *(p++) = 0x3F3BBBBC;  // 0.733333 0xBB
-    *(p++) = 0x3F2AAAAB;  // 0.666667 0xAA
-    *(p++) = 0x0;
-    *(p++) = 0x0;
-    *(p++) = 0x0;
+    p = pb_push3(p, NV097_SET_LIGHT_AMBIENT_COLOR, 0, 0, 0);
+    p = pb_push3f(p, NV097_SET_LIGHT_DIFFUSE_COLOR, r, g, b);
+    p = pb_push3f(p, NV097_SET_LIGHT_SPECULAR_COLOR, 0.f, 0.f, 0.f);
     p = pb_push1(p, NV097_SET_LIGHT_LOCAL_RANGE, 0x7149f2ca);  // 1e+30
-    pb_push_to(SUBCH_3D, p++, NV097_SET_LIGHT_INFINITE_HALF_VECTOR, 6);
-    *(p++) = 0x0;
-    *(p++) = 0x0;
-    *(p++) = 0x0;
-    *(p++) = 0x0;
-    *(p++) = 0x0;
-    *(p++) = 0x3F800000;
+    p = pb_push3(p, NV097_SET_LIGHT_INFINITE_HALF_VECTOR, 0, 0, 0);
+    p = pb_push3f(p, NV097_SET_LIGHT_INFINITE_DIRECTION, 0.0f, 0.0f, 1.0f);
 
     uint32_t control0 =
         MASK(NV097_SET_CONTROL0_Z_FORMAT, NV097_SET_CONTROL0_Z_FORMAT_FIXED);
@@ -169,6 +171,10 @@ int main() {
     renderer.FinishDraw();
 
     has_rendered_frame = true;
+
+    r = wrap_color(r + 0.001f);
+    g = wrap_color(g - 0.005f);
+    b = wrap_color(b + 0.005f);
   }
 
   return 0;
