@@ -83,6 +83,15 @@ static void *Allocator(size_t size) {
 static void Free(void *block) { return DmFreePool(block); }
 
 HRESULT TracerInitialize(NotifyStateChangedHandler on_notify_state_changed) {
+  if (!on_notify_state_changed) {
+    DbgPrint("Invalid on_notify_state_changed handler.");
+    return XBOX_E_FAIL;
+  }
+  if (state_machine.on_notify_state_changed) {
+    DbgPrint("Tracer already initialized.");
+    return XBOX_E_EXISTS;
+  }
+
   state_machine.on_notify_state_changed = on_notify_state_changed;
   state_machine.state = STATE_UNINITIALIZED;
   InitializeCriticalSection(&state_machine.state_critical_section);
@@ -105,8 +114,8 @@ HRESULT TracerCreate(const TracerConfig *config) {
     return XBOX_E_EXISTS;
   }
 
+  SetState(STATE_INITIALIZING);
   state_machine.config = *config;
-  state_machine.state = STATE_INITIALIZING;
   state_machine.request = REQ_NONE;
 
   if (config->rdi_capture_enabled || config->surface_color_capture_enabled ||
@@ -299,6 +308,7 @@ static void WaitForStablePushBufferState(void) {
   if (current_state == STATE_IDLE_STABLE_PUSH_BUFFER ||
       current_state == STATE_IDLE_NEW_FRAME) {
     NotifyStateChanged(current_state);
+    return;
   }
 
   SetState(STATE_WAITING_FOR_STABLE_PUSH_BUFFER);
@@ -609,6 +619,7 @@ static void DiscardUntilFramebufferFlip(void) {
   TracerState current_state = TracerGetState();
   if (current_state == STATE_IDLE_NEW_FRAME) {
     NotifyStateChanged(current_state);
+    return;
   }
 
   SetState(STATE_DISCARDING_UNTIL_FLIP);

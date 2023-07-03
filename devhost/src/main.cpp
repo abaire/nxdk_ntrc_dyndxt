@@ -3,6 +3,8 @@
 #include <pbkit/pbkit.h>
 #include <windows.h>
 
+#include <set>
+
 #include "debug_output.h"
 #include "nxdk_ext.h"
 #include "pbkit_ext.h"
@@ -20,8 +22,48 @@ static void CreateGeometry(Renderer& renderer);
 
 static std::atomic_bool has_rendered_frame(false);
 
+static std::atomic<TracerState> tracer_state;
+
 static void OnTracerStateChanged(TracerState new_state) {
-  PrintMsg("Tracer state changed: %d", new_state);
+  std::string state_name;
+#define HANDLE_STATE(val) \
+  case val:               \
+    state_name = #val;    \
+    break
+
+  switch (new_state) {
+    HANDLE_STATE(STATE_FATAL_ERROR_DISCARDING_FAILED);
+    HANDLE_STATE(STATE_FATAL_ERROR_PROCESS_PUSH_BUFFER_COMMAND_FAILED);
+    HANDLE_STATE(STATE_SHUTDOWN_REQUESTED);
+    HANDLE_STATE(STATE_SHUTDOWN);
+    HANDLE_STATE(STATE_UNINITIALIZED);
+    HANDLE_STATE(STATE_INITIALIZING);
+    HANDLE_STATE(STATE_INITIALIZED);
+    HANDLE_STATE(STATE_IDLE);
+    HANDLE_STATE(STATE_IDLE_STABLE_PUSH_BUFFER);
+    HANDLE_STATE(STATE_IDLE_NEW_FRAME);
+    HANDLE_STATE(STATE_IDLE_LAST);
+    HANDLE_STATE(STATE_WAITING_FOR_STABLE_PUSH_BUFFER);
+    HANDLE_STATE(STATE_DISCARDING_UNTIL_FLIP);
+    default:
+      state_name = "<<UNKNOWN>>";
+      break;
+  }
+
+  PrintMsg("Tracer state changed: %s[%d]", state_name.c_str(), new_state);
+  tracer_state = new_state;
+}
+
+static void WaitForState(TracerState state) {
+  while (tracer_state != state) {
+    Sleep(1);
+  }
+}
+
+static void WaitForState(const std::set<TracerState>& states) {
+  while (states.find(tracer_state) == states.cend()) {
+    Sleep(1);
+  }
 }
 
 static DWORD __attribute__((stdcall))
@@ -36,22 +78,37 @@ TracerThreadMain(LPVOID lpThreadParameter) {
     return init_result;
   }
 
+  // Create a tracer instance and wait for it to stabilize.
   TracerConfig config;
   TracerGetDefaultConfig(&config);
-
   auto create_result = TracerCreate(&config);
   if (!XBOX_SUCCESS(create_result)) {
     PrintMsg("Failed to create tracer: 0x%X", create_result);
     return init_result;
   }
+  WaitForState(STATE_IDLE);
 
   //  TracerCreate
   PrintMsg("About to start wait for stable pbuffer state...");
-  TracerBeginWaitForStablePushBufferState();
+  if (!TracerBeginWaitForStablePushBufferState()) {
+    PrintMsg("TracerBeginWaitForStablePushBufferState failed!");
+    TracerShutdown();
+    return 1;
+  } else {
+    auto stable_states = std::set<TracerState>(
+        {STATE_IDLE_STABLE_PUSH_BUFFER, STATE_IDLE_NEW_FRAME});
+    WaitForState(stable_states);
+  }
   PrintMsg("Achieved stable pbuffer state...");
 
   PrintMsg("About to discard until next frame flip...");
-  TracerBeginDiscardUntilFlip();
+  if (!TracerBeginDiscardUntilFlip()) {
+    PrintMsg("TracerBeginDiscardUntilFlip failed!");
+    TracerShutdown();
+    return 1;
+  } else {
+    WaitForState(STATE_IDLE_NEW_FRAME);
+  }
   PrintMsg("New frame started!");
 
   TracerShutdown();
