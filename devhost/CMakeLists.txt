@@ -115,3 +115,19 @@ add_custom_command(
 
 set(XISO_TARGET devhost_xiso)
 add_custom_target("${XISO_TARGET}" DEPENDS "${XISO_OUTPUT_PATH}")
+
+
+set(XBDM_GDB_BRIDGE $ENV{XBDM_GDB_BRIDGE})
+set(XBOX $ENV{XBOX})
+if(DEFINED ENV{REMOTE_PATH})
+    set(REMOTE_PATH $ENV{REMOTE_PATH})
+else()
+    set(REMOTE_PATH "e:\\\\ntrc_devhost")
+endif()
+
+add_custom_target(
+        devhost_deploy_with_xbdm
+        COMMAND "${XBDM_GDB_BRIDGE}" "${XBOX}" -- mkdir "${REMOTE_PATH}"
+        COMMAND "${XBDM_GDB_BRIDGE}" "${XBOX}" -- putfile "${XBE_OUTPUT_PATH}" "${REMOTE_PATH}" -f
+        DEPENDS "${XBE_OUTPUT_PATH}"
+)
