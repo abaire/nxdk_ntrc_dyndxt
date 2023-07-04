@@ -32,10 +32,16 @@ typedef struct TracerConfig {
 // Callback to be invoked when the tracer state changes.
 typedef void (*NotifyStateChangedHandler)(TracerState);
 
+// Callback to be invoked when bytes are written to a circular buffer.
+typedef void (*NotifyBytesAvailable)(uint32_t bytes_written);
+
 //! Initializes the tracer library.
 //! The given function will be called anytime the tracer state machine changes
 //! state.
-HRESULT TracerInitialize(NotifyStateChangedHandler on_notify_state_changed);
+HRESULT TracerInitialize(
+    NotifyStateChangedHandler on_notify_state_changed,
+    NotifyBytesAvailable on_pgraph_buffer_bytes_available,
+    NotifyBytesAvailable on_graphics_buffer_bytes_available);
 
 //! Populates the given TracerConfig with default values.
 void TracerGetDefaultConfig(TracerConfig *config);
@@ -49,8 +55,29 @@ void TracerShutdown(void);
 TracerState TracerGetState(void);
 BOOL TracerGetDMAAddresses(DWORD *push_addr, DWORD *pull_addr);
 
+//! True if a request is actively being processed.
+BOOL TracerIsProcessingRequest(void);
 HRESULT TracerBeginWaitForStablePushBufferState(void);
 HRESULT TracerBeginDiscardUntilFlip(void);
+HRESULT TracerTraceCurrentFrame(void);
+
+//! Locks the PGRAPH buffer to prevent writing, returning the bytes available in
+//! the buffer.
+uint32_t TracerLockPGRAPHBuffer(void);
+//! Copies up to `size` bytes from the PGRAPH buffer into `buffer`, returning
+//! the number of bytes actually copied.
+uint32_t TracerReadPGRAPHBuffer(void *buffer, uint32_t size);
+//! Releases the lock on the PGRAPH buffer.
+void TracerUnlockPGRAPHBuffer(void);
+
+//! Locks the Graphics buffer to prevent writing, returning the bytes available
+//! in the buffer.
+uint32_t TracerLockGraphicsBuffer(void);
+//! Copies up to `size` bytes from the Graphics buffer into `buffer`, returning
+//! the number of bytes actually copied.
+uint32_t TracerReadGraphicsBuffer(void *buffer, uint32_t size);
+//! Releases the lock on the Graphics buffer.
+void TracerUnlockGraphicsBuffer(void);
 
 #ifdef __cplusplus
 }  // extern "C"

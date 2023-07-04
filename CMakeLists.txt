@@ -159,10 +159,18 @@ add_library(
         src/cmd_get_state.h
         src/cmd_hello.c
         src/cmd_hello.h
+        src/cmd_read_graphics.c
+        src/cmd_read_graphics.h
+        src/cmd_read_pgraph.c
+        src/cmd_read_pgraph.h
+        src/cmd_trace_frame.c
+        src/cmd_trace_frame.h
         src/cmd_wait_for_stable_push_buffer_state.c
         src/cmd_wait_for_stable_push_buffer_state.h
         src/dxtmain.c
         src/dxtmain.h
+        src/xbdm_util.c
+        src/xbdm_util.h
         "${dyndxt_include_dir}/command_processor_util.h"
         "${dyndxt_include_dir}/nxdk_dxt_dll_main.h"
 )

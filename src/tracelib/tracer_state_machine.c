@@ -14,6 +14,7 @@ typedef enum TracerRequest {
   REQ_NONE,
   REQ_WAIT_FOR_STABLE_PUSH_BUFFER,
   REQ_DISCARD_UNTIL_FLIP,
+  REQ_TRACE_UNTIL_FLIP,
 } TracerRequest;
 
 typedef struct TracerStateMachine {
@@ -30,9 +31,13 @@ typedef struct TracerStateMachine {
   DWORD target_dma_push_addr;
 
   NotifyStateChangedHandler on_notify_state_changed;
+  NotifyBytesAvailable on_pgraph_buffer_bytes_available;
+  NotifyBytesAvailable on_graphics_buffer_bytes_available;
 
   TracerConfig config;
+  CRITICAL_SECTION pgraph_critical_section;
   CircularBuffer pgraph_buffer;
+  CRITICAL_SECTION graphics_critical_section;
   CircularBuffer graphics_buffer;
 } TracerStateMachine;
 
@@ -75,6 +80,7 @@ static void Shutdown(void);
 
 static void WaitForStablePushBufferState(void);
 static void DiscardUntilFramebufferFlip(void);
+static void TraceUntilFramebufferFlip(bool discard);
 
 static void *Allocator(size_t size) {
   return DmAllocatePoolWithTag(size, kTag);
@@ -82,7 +88,10 @@ static void *Allocator(size_t size) {
 
 static void Free(void *block) { return DmFreePool(block); }
 
-HRESULT TracerInitialize(NotifyStateChangedHandler on_notify_state_changed) {
+HRESULT TracerInitialize(
+    NotifyStateChangedHandler on_notify_state_changed,
+    NotifyBytesAvailable on_pgraph_buffer_bytes_available,
+    NotifyBytesAvailable on_graphics_buffer_bytes_available) {
   if (!on_notify_state_changed) {
     DbgPrint("Invalid on_notify_state_changed handler.");
     return XBOX_E_FAIL;
@@ -93,8 +102,15 @@ HRESULT TracerInitialize(NotifyStateChangedHandler on_notify_state_changed) {
   }
 
   state_machine.on_notify_state_changed = on_notify_state_changed;
+  state_machine.on_pgraph_buffer_bytes_available =
+      on_pgraph_buffer_bytes_available;
+  state_machine.on_graphics_buffer_bytes_available =
+      on_graphics_buffer_bytes_available;
+
   state_machine.state = STATE_UNINITIALIZED;
   InitializeCriticalSection(&state_machine.state_critical_section);
+  InitializeCriticalSection(&state_machine.pgraph_critical_section);
+  InitializeCriticalSection(&state_machine.graphics_critical_section);
 
   return XBOX_S_OK;
 }
@@ -223,6 +239,13 @@ static BOOL SetRequest(TracerRequest new_request) {
   return ret;
 }
 
+BOOL TracerIsProcessingRequest(void) {
+  EnterCriticalSection(&state_machine.state_critical_section);
+  BOOL ret = state_machine.request != REQ_NONE;
+  LeaveCriticalSection(&state_machine.state_critical_section);
+  return ret;
+}
+
 static void SaveDMAAddresses(DWORD push_addr, DWORD pull_addr) {
   EnterCriticalSection(&state_machine.state_critical_section);
   state_machine.real_dma_pull_addr = pull_addr;
@@ -243,6 +266,41 @@ HRESULT TracerBeginDiscardUntilFlip(void) {
     return XBOX_S_OK;
   }
   return XBOX_E_ACCESS_DENIED;
+}
+
+HRESULT TracerTraceCurrentFrame(void) {
+  if (SetRequest(REQ_TRACE_UNTIL_FLIP)) {
+    return XBOX_S_OK;
+  }
+  return XBOX_E_ACCESS_DENIED;
+}
+
+uint32_t TracerLockPGRAPHBuffer(void) {
+  EnterCriticalSection(&state_machine.pgraph_critical_section);
+  return CBAvailable(state_machine.pgraph_buffer);
+}
+
+uint32_t TracerReadPGRAPHBuffer(void *buffer, uint32_t size) {
+  return CBReadAvailable(state_machine.pgraph_buffer, buffer, size);
+}
+//! Releases the lock on the PGRAPH buffer.
+void TracerUnlockPGRAPHBuffer(void) {
+  LeaveCriticalSection(&state_machine.pgraph_critical_section);
+}
+
+//! Locks the Graphics buffer to prevent writing, returning the bytes available
+//! in the buffer.
+uint32_t TracerLockGraphicsBuffer(void) {
+  EnterCriticalSection(&state_machine.graphics_critical_section);
+  return CBAvailable(state_machine.graphics_buffer);
+}
+
+uint32_t TracerReadGraphicsBuffer(void *buffer, uint32_t size) {
+  return CBReadAvailable(state_machine.graphics_buffer, buffer, size);
+}
+
+void TracerUnlockGraphicsBuffer(void) {
+  LeaveCriticalSection(&state_machine.graphics_critical_section);
 }
 
 static DWORD __attribute__((stdcall))
@@ -274,6 +332,10 @@ TracerThreadMain(LPVOID lpThreadParameter) {
 
       case REQ_DISCARD_UNTIL_FLIP:
         DiscardUntilFramebufferFlip();
+        break;
+
+      case REQ_TRACE_UNTIL_FLIP:
+        TraceUntilFramebufferFlip(false);
         break;
 
       case REQ_NONE:
@@ -557,7 +619,7 @@ static DWORD ProcessPushBufferCommand(DWORD *dma_pull_addr,
     unprocessed_bytes = 4;
   } else {
     // Mark the size of the instruction + any associated parameters.
-    unprocessed_bytes = 4 + method_info->command.method_count * 4;
+    unprocessed_bytes = 4 + method_info->command.parameter_count * 4;
 
     PGRAPHCommandCallback *pre_callbacks = NULL;
     PGRAPHCommandCallback *post_callbacks = NULL;
@@ -614,26 +676,58 @@ static DWORD ProcessPushBufferCommand(DWORD *dma_pull_addr,
   return unprocessed_bytes;
 }
 
-static void DiscardUntilFramebufferFlip(void) {
+//! Write all of the given data to the given circular buffer.
+static void WriteBuffer(NotifyBytesAvailable notify_bytes_available,
+                        CRITICAL_SECTION *critical_section, CircularBuffer cb,
+                        const void *data, uint32_t len) {
+  while (len) {
+    EnterCriticalSection(critical_section);
+    uint32_t bytes_written = CBWriteAvailable(cb, data, len);
+    LeaveCriticalSection(critical_section);
+    if (bytes_written) {
+      notify_bytes_available(bytes_written);
+    }
+    len -= bytes_written;
+    if (len) {
+      Sleep(10);
+    }
+  }
+}
+
+static void LogCommand(const PushBufferCommandTraceInfo *info) {
+  if (!info->valid) {
+    return;
+  }
+  WriteBuffer(state_machine.on_pgraph_buffer_bytes_available,
+              &state_machine.pgraph_critical_section,
+              state_machine.pgraph_buffer, info, sizeof(*info));
+  if (info->data && info->command.parameter_count) {
+    uint32_t data_size = info->command.parameter_count * 4;
+    WriteBuffer(state_machine.on_pgraph_buffer_bytes_available,
+                &state_machine.pgraph_critical_section,
+                state_machine.pgraph_buffer, info->data, data_size);
+  }
+}
+
+static void TraceUntilFramebufferFlip(bool discard) {
   TracerState current_state = TracerGetState();
-  if (current_state == STATE_IDLE_NEW_FRAME) {
-    NotifyStateChanged(current_state);
+  if (current_state != STATE_IDLE_NEW_FRAME) {
+    SetState(STATE_FATAL_NOT_IN_NEW_FRAME_STATE);
     return;
   }
 
-  if (!state_machine.dma_addresses_valid) {
-    SetState(STATE_FATAL_NOT_IN_STABLE_STATE);
-    return;
-  }
-
-  SetState(STATE_DISCARDING_UNTIL_FLIP);
+  TracerState working_state =
+      discard ? STATE_DISCARDING_UNTIL_FLIP : STATE_TRACING_UNTIL_FLIP;
+  SetState(working_state);
 
   DWORD bytes_queued = 0;
   DWORD dma_pull_addr = state_machine.real_dma_pull_addr;
   DWORD commands_discarded = 0;
 
-  while (TracerGetState() == STATE_DISCARDING_UNTIL_FLIP) {
+  DWORD command_index = 1;
+  while (TracerGetState() == working_state) {
     PushBufferCommandTraceInfo info;
+    info.packet_index = command_index++;
     DWORD unprocessed_bytes =
         ProcessPushBufferCommand(&dma_pull_addr, &info, TRUE, TRUE);
     if (unprocessed_bytes == 0xFFFFFFFF) {
@@ -648,7 +742,7 @@ static void DiscardUntilFramebufferFlip(void) {
     BOOL is_empty = dma_pull_addr == state_machine.real_dma_push_addr;
 
 #ifdef VERBOSE_DEBUG
-    if (info.valid & !is_flip && info.graphics_class == 0x97) {
+    if (discard && info.valid & !is_flip && info.graphics_class == 0x97) {
       DbgPrint("Discarding command 0x%X - 0x%X\n", info.graphics_class,
                info.command.method);
     }
@@ -685,17 +779,21 @@ static void DiscardUntilFramebufferFlip(void) {
       }
     }
 
+    if (!discard) {
+      LogCommand(&info);
+    }
+
     if (is_flip) {
       CompleteRequest();
       SetState(STATE_IDLE_NEW_FRAME);
       return;
     }
 
-    if (is_empty && !bytes_queued) {
+    if (is_empty) {
       Sleep(0);
     }
 #ifdef VERBOSE_DEBUG
-    if (!(++commands_discarded & 0x01FF)) {
+    if (discard && !(++commands_discarded & 0x01FF)) {
       DbgPrint(
           "Awaiting flip stall... Discarded %d commands   PULL@ 0x%X  "
           "REAL_PUSH: 0x%X  BQ: %d  MTHD: 0x%X\n",
@@ -704,4 +802,19 @@ static void DiscardUntilFramebufferFlip(void) {
     }
 #endif
   }
+}
+
+static void DiscardUntilFramebufferFlip(void) {
+  TracerState current_state = TracerGetState();
+  if (current_state == STATE_IDLE_NEW_FRAME) {
+    NotifyStateChanged(current_state);
+    return;
+  }
+
+  if (!state_machine.dma_addresses_valid) {
+    SetState(STATE_FATAL_NOT_IN_STABLE_STATE);
+    return;
+  }
+
+  TraceUntilFramebufferFlip(true);
 }

@@ -61,10 +61,10 @@ DWORD ParsePushBufferCommand(DWORD addr, DWORD command,
     info->valid = TRUE;
     info->method = command & 0x1FFF;
     info->subchannel = (command >> 13) & 7;
-    info->method_count = (command >> 18) & 0x7FF;
+    info->parameter_count = (command >> 18) & 0x7FF;
     info->non_increasing = is_method_non_increasing;
 
-    addr += 4 + info->method_count * 4;
+    addr += 4 + info->parameter_count * 4;
     return addr;
   }
 
@@ -106,10 +106,10 @@ DWORD ParsePushBufferCommandTraceInfo(DWORD pull_addr,
     // `pull_addr`?
     info->graphics_class = FetchActiveGraphicsClass();
 
-    // Note: Halo: CE has cases where `method_count` == 0 that must be accounted
-    // for.
-    if (info->command.method_count && !discard_parameters) {
-      DWORD data_len = info->command.method_count * 4;
+    // Note: Halo: CE has cases where `parameter_count` == 0 that must be
+    // accounted for.
+    if (info->command.parameter_count && !discard_parameters) {
+      DWORD data_len = info->command.parameter_count * 4;
       info->data = (uint8_t *)DmAllocatePoolWithTag(data_len, kTag);
       if (!info->data) {
         info->valid = FALSE;

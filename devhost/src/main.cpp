@@ -35,6 +35,8 @@ static void OnTracerStateChanged(TracerState new_state) {
     break
 
   switch (new_state) {
+    HANDLE_STATE(STATE_FATAL_NOT_IN_NEW_FRAME_STATE);
+    HANDLE_STATE(STATE_FATAL_NOT_IN_STABLE_STATE);
     HANDLE_STATE(STATE_FATAL_DISCARDING_FAILED);
     HANDLE_STATE(STATE_FATAL_PROCESS_PUSH_BUFFER_COMMAND_FAILED);
     HANDLE_STATE(STATE_SHUTDOWN_REQUESTED);
@@ -48,6 +50,7 @@ static void OnTracerStateChanged(TracerState new_state) {
     HANDLE_STATE(STATE_IDLE_LAST);
     HANDLE_STATE(STATE_WAITING_FOR_STABLE_PUSH_BUFFER);
     HANDLE_STATE(STATE_DISCARDING_UNTIL_FLIP);
+    HANDLE_STATE(STATE_TRACING_UNTIL_FLIP);
     default:
       state_name = "<<UNKNOWN>>";
       break;
@@ -55,6 +58,25 @@ static void OnTracerStateChanged(TracerState new_state) {
 
   PrintMsg("Tracer state changed: %s[%d]", state_name.c_str(), new_state);
   tracer_state = new_state;
+}
+
+static void OnPGRAPHBytesAvailable(uint32_t bytes_written) {
+  PrintMsg("New PGRAPH bytes available: %u", bytes_written);
+  TracerLockPGRAPHBuffer();
+  std::vector<uint8_t> discard_buffer(1024);
+  while (TracerReadPGRAPHBuffer(discard_buffer.data(), discard_buffer.size())) {
+  }
+  TracerUnlockPGRAPHBuffer();
+}
+
+static void OnGraphicsBytesAvailable(uint32_t bytes_written) {
+  PrintMsg("New graphics bytes available: %u", bytes_written);
+  TracerLockGraphicsBuffer();
+  std::vector<uint8_t> discard_buffer(1024);
+  while (
+      TracerReadGraphicsBuffer(discard_buffer.data(), discard_buffer.size())) {
+  }
+  TracerUnlockGraphicsBuffer();
 }
 
 static void WaitForState(TracerState state) {
@@ -69,13 +91,20 @@ static void WaitForState(const std::set<TracerState>& states) {
   }
 }
 
+static void WaitForRequestComplete() {
+  while (TracerIsProcessingRequest()) {
+    Sleep(1);
+  }
+}
+
 static DWORD __attribute__((stdcall))
 TracerThreadMain(LPVOID lpThreadParameter) {
   while (!has_rendered_frame) {
     Sleep(1);
   }
 
-  auto init_result = TracerInitialize(OnTracerStateChanged);
+  auto init_result = TracerInitialize(
+      OnTracerStateChanged, OnPGRAPHBytesAvailable, OnGraphicsBytesAvailable);
   if (!XBOX_SUCCESS(init_result)) {
     PrintMsg("Failed to initialize tracer: 0x%X", init_result);
     return init_result;
@@ -98,9 +127,7 @@ TracerThreadMain(LPVOID lpThreadParameter) {
     TracerShutdown();
     return 1;
   } else {
-    auto stable_states = std::set<TracerState>(
-        {STATE_IDLE_STABLE_PUSH_BUFFER, STATE_IDLE_NEW_FRAME});
-    WaitForState(stable_states);
+    WaitForRequestComplete();
   }
   PrintMsg("Achieved stable pbuffer state...");
 
@@ -110,9 +137,17 @@ TracerThreadMain(LPVOID lpThreadParameter) {
     TracerShutdown();
     return 1;
   } else {
-    WaitForState(STATE_IDLE_NEW_FRAME);
+    WaitForRequestComplete();
   }
   PrintMsg("New frame started!");
+
+  if (!TracerTraceCurrentFrame()) {
+    PrintMsg("TracerTraceCurrentFrame failed!");
+    TracerShutdown();
+    return 1;
+  } else {
+    WaitForRequestComplete();
+  }
 
   TracerShutdown();
   return 0;

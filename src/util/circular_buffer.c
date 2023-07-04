@@ -48,12 +48,12 @@ void CBDestroy(CircularBuffer handle) {
   cb->free_proc(cb);
 }
 
-inline uint32_t CBCapacity(CircularBuffer handle) {
+uint32_t CBCapacity(CircularBuffer handle) {
   CircularBufferImpl *cb = (CircularBufferImpl *)handle;
   return cb->size - 1;
 }
 
-inline uint32_t CBAvailable(CircularBuffer handle) {
+uint32_t CBAvailable(CircularBuffer handle) {
   CircularBufferImpl *cb = (CircularBufferImpl *)handle;
   if (cb->write >= cb->read) {
     return cb->write - cb->read;
@@ -61,7 +61,7 @@ inline uint32_t CBAvailable(CircularBuffer handle) {
   return cb->size + cb->write - cb->read;
 }
 
-inline uint32_t CBFreeSpace(CircularBuffer handle) {
+uint32_t CBFreeSpace(CircularBuffer handle) {
   CircularBufferImpl *cb = (CircularBufferImpl *)handle;
   if (cb->read > cb->write) {
     return (cb->read - 1) - cb->write;
