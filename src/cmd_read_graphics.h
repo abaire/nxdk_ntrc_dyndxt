@@ -17,9 +17,9 @@
 //! complicated multi-call response. \return XBOX specific HRESULT (e.g.,
 //! XBOX_S_OK). See `xbdm_err.h`.
 //!
-//! Command sring parameters:
+//! Command string parameters:
 //!   maxsize - uint32 indicating the maximum size in bytes to read.
 HRESULT HandleReadGraphics(const char *command, char *response,
-                           DWORD response_len, CommandContext *ctx);
+                           uint32_t response_len, CommandContext *ctx);
 
 #endif  // NTRC_DYNDXT_SRC_CMD_READ_GRAPHICS_H_

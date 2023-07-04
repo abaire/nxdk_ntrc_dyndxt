@@ -9,7 +9,7 @@ static SendPrepopulatedBinaryDataContext send_context;
 static uint8_t read_buffer[4096];
 
 HRESULT HandleReadPGRAPH(const char *command, char *response,
-                         DWORD response_len, CommandContext *ctx) {
+                         uint32_t response_len, CommandContext *ctx) {
   TracerLockPGRAPHBuffer();
   uint32_t valid_bytes =
       TracerReadPGRAPHBuffer(read_buffer + 4, sizeof(read_buffer) - 4);

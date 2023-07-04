@@ -138,7 +138,7 @@ TracerThreadMain(LPVOID lpThreadParameter) {
 
   PrintMsg("About to discard until next frame flip...");
   request_processed = false;
-  if (!TracerBeginDiscardUntilFlip()) {
+  if (!TracerBeginDiscardUntilFlip(TRUE)) {
     PrintMsg("TracerBeginDiscardUntilFlip failed!");
     TracerShutdown();
     return 1;

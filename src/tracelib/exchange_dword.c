@@ -1,7 +1,7 @@
 #include "exchange_dword.h"
 
-DWORD ExchangeDWORD(intptr_t address, DWORD value) {
-  DWORD ret;
+uint32_t ExchangeDWORD(intptr_t address, uint32_t value) {
+  uint32_t ret;
   __asm__ volatile(
       ".intel_syntax noprefix\n"
       "cli\n"

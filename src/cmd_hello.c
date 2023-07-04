@@ -7,7 +7,7 @@
 static HRESULT_API SendHelloData(CommandContext *ctx, char *response,
                                  DWORD response_len);
 
-HRESULT HandleHello(const char *command, char *response, DWORD response_len,
+HRESULT HandleHello(const char *command, char *response, uint32_t response_len,
                     CommandContext *ctx) {
   ctx->user_data = 0;
   ctx->handler = SendHelloData;

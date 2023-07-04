@@ -14,7 +14,7 @@ typedef enum KickResult {
   KICK_PUSH_MODIFIED_IN_CALL,
 } KickResult;
 
-KickResult KickFIFO(DWORD expected_push);
+KickResult KickFIFO(uint32_t expected_push);
 
 #ifdef __cplusplus
 };  // extern "C"

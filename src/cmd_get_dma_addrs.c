@@ -5,8 +5,8 @@
 #include "tracelib/tracer_state_machine.h"
 
 HRESULT HandleGetDMAAddrs(const char *command, char *response,
-                          DWORD response_len, CommandContext *ctx) {
-  DWORD push_addr, pull_addr;
+                          uint32_t response_len, CommandContext *ctx) {
+  uint32_t push_addr, pull_addr;
   if (!TracerGetDMAAddresses(&push_addr, &pull_addr)) {
     snprintf(response, response_len, "invalid");
   } else {

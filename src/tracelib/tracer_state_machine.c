@@ -10,10 +10,17 @@
 
 #define VERBOSE_DEBUG
 
+#ifdef VERBOSE_DEBUG
+#define VERBOSE_PRINT(c) DbgPrint c
+#else
+#define VERBOSE_PRINT(c)
+#endif
+
 typedef enum TracerRequest {
   REQ_NONE,
   REQ_WAIT_FOR_STABLE_PUSH_BUFFER,
-  REQ_DISCARD_UNTIL_FLIP,
+  REQ_DISCARD_UNTIL_FRAME_START,
+  REQ_DISCARD_UNTIL_NEXT_FLIP,
   REQ_TRACE_UNTIL_FLIP,
 } TracerRequest;
 
@@ -26,9 +33,9 @@ typedef struct TracerStateMachine {
   TracerRequest request;
 
   BOOL dma_addresses_valid;
-  DWORD real_dma_pull_addr;
-  DWORD real_dma_push_addr;
-  DWORD target_dma_push_addr;
+  uint32_t real_dma_pull_addr;
+  uint32_t real_dma_push_addr;
+  uint32_t target_dma_push_addr;
 
   NotifyStateChangedHandler on_notify_state_changed;
   NotifyRequestProcessedHandler on_notify_request_processed;
@@ -49,14 +56,14 @@ typedef struct PGRAPHCommandProcessor {
   BOOL valid;
 
   // The command to be processed.
-  DWORD command;
+  uint32_t command;
 
   PGRAPHCommandCallback *pre_callbacks;
   PGRAPHCommandCallback *post_callbacks;
 } PGRAPHCommandProcessor;
 
 typedef struct PGRAPHClassProcessor {
-  DWORD class;
+  uint32_t class;
   PGRAPHCommandProcessor *processors;
 } PGRAPHClassProcessor;
 
@@ -65,7 +72,7 @@ static const uint32_t kTag = 0x6E74534D;  // 'ntSM'
 // Maximum number of bytes to leave in the FIFO before allowing it to be
 // processed. A cap is necessary to prevent Direct3D from performing fixups that
 // would not happen outside of tracing conditions.
-static const DWORD kMaxQueueDepthBeforeFlush = 200;
+static const uint32_t kMaxQueueDepthBeforeFlush = 200;
 
 static const PGRAPHClassProcessor kPGRAPHProcessorRegistry[] = {{0, NULL}};
 
@@ -80,8 +87,8 @@ static BOOL SetRequest(TracerRequest new_request);
 static void Shutdown(void);
 
 static void WaitForStablePushBufferState(void);
-static void DiscardUntilFramebufferFlip(void);
-static void TraceUntilFramebufferFlip(bool discard);
+static void DiscardUntilFramebufferFlip(BOOL require_new_frame);
+static void TraceUntilFramebufferFlip(BOOL discard);
 
 static void *Allocator(size_t size) {
   return DmAllocatePoolWithTag(size, kTag);
@@ -97,10 +104,6 @@ HRESULT TracerInitialize(
   if (!on_notify_state_changed) {
     DbgPrint("Invalid on_notify_state_changed handler.");
     return XBOX_E_FAIL;
-  }
-  if (state_machine.on_notify_state_changed) {
-    DbgPrint("Tracer already initialized.");
-    return XBOX_E_EXISTS;
   }
 
   state_machine.on_notify_state_changed = on_notify_state_changed;
@@ -129,7 +132,10 @@ void TracerGetDefaultConfig(TracerConfig *config) {
 }
 
 HRESULT TracerCreate(const TracerConfig *config) {
+  DbgPrint("TracerCreate: %d", state_machine.state);
+
   if (state_machine.state > STATE_UNINITIALIZED) {
+    DbgPrint("Unexpected state %d in TracerCreate", state_machine.state);
     return XBOX_E_EXISTS;
   }
 
@@ -187,14 +193,14 @@ TracerState TracerGetState(void) {
   return ret;
 }
 
-BOOL TracerGetDMAAddresses(DWORD *push_addr, DWORD *pull_addr) {
+BOOL TracerGetDMAAddresses(uint32_t *push_addr, uint32_t *pull_addr) {
   EnterCriticalSection(&state_machine.state_critical_section);
   *push_addr = state_machine.real_dma_push_addr;
   *pull_addr = state_machine.real_dma_pull_addr;
-  BOOL valid = TRUE;
+  BOOL ret = state_machine.dma_addresses_valid;
   LeaveCriticalSection(&state_machine.state_critical_section);
 
-  return valid;
+  return ret;
 }
 
 static void NotifyStateChanged(TracerState new_state) {
@@ -238,14 +244,19 @@ static void CompleteRequest(void) {
 static BOOL SetRequest(TracerRequest new_request) {
   BOOL ret;
   EnterCriticalSection(&state_machine.state_critical_section);
-  if (state_machine.request != REQ_NONE &&
-      state_machine.request != new_request) {
+  TracerRequest current = state_machine.request;
+  if (current != REQ_NONE && current != new_request) {
     ret = FALSE;
   } else {
     state_machine.request = new_request;
     ret = TRUE;
   }
   LeaveCriticalSection(&state_machine.state_critical_section);
+
+  if (!ret) {
+    DbgPrint("Attempt to set request to %d but already %d", new_request,
+             current);
+  }
   return ret;
 }
 
@@ -256,7 +267,7 @@ BOOL TracerIsProcessingRequest(void) {
   return ret;
 }
 
-static void SaveDMAAddresses(DWORD push_addr, DWORD pull_addr) {
+static void SaveDMAAddresses(uint32_t push_addr, uint32_t pull_addr) {
   EnterCriticalSection(&state_machine.state_critical_section);
   state_machine.real_dma_pull_addr = pull_addr;
   state_machine.real_dma_push_addr = push_addr;
@@ -271,8 +282,10 @@ HRESULT TracerBeginWaitForStablePushBufferState(void) {
   return XBOX_E_ACCESS_DENIED;
 }
 
-HRESULT TracerBeginDiscardUntilFlip(void) {
-  if (SetRequest(REQ_DISCARD_UNTIL_FLIP)) {
+HRESULT TracerBeginDiscardUntilFlip(BOOL require_new_frame) {
+  TracerRequest request = require_new_frame ? REQ_DISCARD_UNTIL_NEXT_FLIP
+                                            : REQ_DISCARD_UNTIL_FRAME_START;
+  if (SetRequest(request)) {
     return XBOX_S_OK;
   }
   return XBOX_E_ACCESS_DENIED;
@@ -341,8 +354,13 @@ TracerThreadMain(LPVOID lpThreadParameter) {
         NotifyRequestProcessed();
         break;
 
-      case REQ_DISCARD_UNTIL_FLIP:
-        DiscardUntilFramebufferFlip();
+      case REQ_DISCARD_UNTIL_FRAME_START:
+        DiscardUntilFramebufferFlip(FALSE);
+        NotifyRequestProcessed();
+        break;
+
+      case REQ_DISCARD_UNTIL_NEXT_FLIP:
+        DiscardUntilFramebufferFlip(TRUE);
         NotifyRequestProcessed();
         break;
 
@@ -376,6 +394,10 @@ static void Shutdown(void) {
   CBDestroy(state_machine.pgraph_buffer);
 
   SetState(STATE_SHUTDOWN);
+
+  DeleteCriticalSection(&state_machine.state_critical_section);
+  DeleteCriticalSection(&state_machine.pgraph_critical_section);
+  DeleteCriticalSection(&state_machine.graphics_critical_section);
 }
 
 static void WaitForStablePushBufferState(void) {
@@ -383,13 +405,14 @@ static void WaitForStablePushBufferState(void) {
   if (current_state == STATE_IDLE_STABLE_PUSH_BUFFER ||
       current_state == STATE_IDLE_NEW_FRAME) {
     NotifyStateChanged(current_state);
+    CompleteRequest();
     return;
   }
 
   SetState(STATE_WAITING_FOR_STABLE_PUSH_BUFFER);
 
-  DWORD dma_pull_addr = 0;
-  DWORD dma_push_addr_real = 0;
+  uint32_t dma_pull_addr = 0;
+  uint32_t dma_push_addr_real = 0;
 
   while (TracerGetState() == STATE_WAITING_FOR_STABLE_PUSH_BUFFER) {
     // Stop consuming CACHE entries.
@@ -397,7 +420,7 @@ static void WaitForStablePushBufferState(void) {
     BusyWaitUntilPGRAPHIdle();
 
     // Kick the pusher so that it fills the CACHE.
-    MaybePopulateFIFOCache();
+    MaybePopulateFIFOCache(0);
 
     // Now drain the CACHE.
     EnablePGRAPHFIFO();
@@ -412,7 +435,7 @@ static void WaitForStablePushBufferState(void) {
     dma_pull_addr += dma_state.method_count * 4;
 
     // Hide all commands from the PB by setting PUT = GET.
-    DWORD dma_push_addr_target = dma_pull_addr;
+    uint32_t dma_push_addr_target = dma_pull_addr;
     SetDMAPushAddress(dma_push_addr_target);
 
     // Resume pusher - The PB can't run yet, as it has no commands to process.
@@ -427,8 +450,8 @@ static void WaitForStablePushBufferState(void) {
     // TODO: Determine whether a sleep is needed and optimize the value.
     Sleep(1000);
 
-    DWORD dma_push_addr_check = GetDMAPushAddress();
-    DWORD dma_pull_addr_check = GetDMAPullAddress();
+    uint32_t dma_push_addr_check = GetDMAPushAddress();
+    uint32_t dma_pull_addr_check = GetDMAPullAddress();
 
     // We want the PB to be empty.
     if (dma_pull_addr_check != dma_push_addr_check) {
@@ -446,8 +469,8 @@ static void WaitForStablePushBufferState(void) {
 
     SaveDMAAddresses(dma_push_addr_real, dma_pull_addr);
     state_machine.target_dma_push_addr = dma_pull_addr;
-    CompleteRequest();
     SetState(STATE_IDLE_STABLE_PUSH_BUFFER);
+    CompleteRequest();
     return;
   }
 
@@ -460,20 +483,16 @@ static void WaitForStablePushBufferState(void) {
 }
 
 // Sets the DMA_PUSH_ADDR to the given target, storing the old value.
-static void ExchangeDMAPushAddress(DWORD target) {
-  DWORD prev_target = state_machine.target_dma_push_addr;
-  //  DWORD prev_real = state_machine.real_dma_push_addr;
+static void ExchangeDMAPushAddress(uint32_t target) {
+  EnterCriticalSection(&state_machine.state_critical_section);
+  uint32_t prev_target = state_machine.target_dma_push_addr;
 
-  DWORD real = ExchangeDWORD(DMA_PUSH_ADDR, target);
+  uint32_t real = ExchangeDWORD(DMA_PUSH_ADDR, target);
   state_machine.target_dma_push_addr = target;
 
   // It must point where we pointed previously, otherwise something is broken.
   if (real != prev_target) {
-    //    self.html_log.print_log(
-    //        "New real PUT (0x%08X -> 0x%08X) while changing hook 0x%08X ->
-    //        0x%08X" % (prev_real, real, prev_target, target)
-    //    )
-    DWORD push_state = ReadDWORD(CACHE_PUSH_STATE);
+    uint32_t push_state = ReadDWORD(CACHE_PUSH_STATE);
     if (push_state & 0x01) {
       DbgPrint("PUT was modified and pusher was already active!\n");
       Sleep(60 * 1000);
@@ -481,31 +500,23 @@ static void ExchangeDMAPushAddress(DWORD target) {
 
     state_machine.real_dma_push_addr = real;
   }
+  LeaveCriticalSection(&state_machine.state_critical_section);
 }
 
 // Runs the PFIFO until the DMA_PULL_ADDR equals the given address.
-static void RunFIFO(DWORD pull_addr_target) {
+static void RunFIFO(uint32_t pull_addr_target) {
   // Mark the pushbuffer as empty by setting the push address to the target pull
   // address.
-
   ExchangeDMAPushAddress(pull_addr_target);
   // FIXME: we can avoid this read in some cases, as we should know where we are
   state_machine.real_dma_pull_addr = GetDMAPullAddress();
-  //  self.html_log.log(
-  //      [
-  //          "WARNING",
-  //          "Running FIFO (GET: 0x%08X -- PUT: 0x%08X / 0x%08X)"
-  //          % (self.real_dma_pull_addr, pull_addr_target,
-  //          self.real_dma_push_addr),
-  //      ]
-  //  )
 
   // Loop while this command is being run.
   // This is necessary because a whole command might not fit into CACHE.
   // So we have to process it chunk by chunk.
   // FIXME: This used to be a check which made sure that `dma_pull_addr` did
   //       never leave the known PB.
-  DWORD iterations_with_no_change = 0;
+  uint32_t iterations_with_no_change = 0;
   while (state_machine.real_dma_pull_addr != pull_addr_target) {
     if (iterations_with_no_change && !(iterations_with_no_change % 1000)) {
       DbgPrint(
@@ -515,14 +526,12 @@ static void RunFIFO(DWORD pull_addr_target) {
           pull_addr_target);
     }
 
-#ifdef VERBOSE_DEBUG
-    DbgPrint(
-        "RunFIFO: At 0x%08X, target is 0x%08X (Real: 0x%08X)\n"
-        "         PULL ADDR: 0x%X  PUSH: 0x%X\n",
-        state_machine.real_dma_pull_addr, pull_addr_target,
-        state_machine.real_dma_push_addr, GetDMAPullAddress(),
-        GetDMAPushAddress());
-#endif
+    VERBOSE_PRINT(
+        ("RunFIFO: At 0x%08X, target is 0x%08X (Real: 0x%08X)\n"
+         "         PULL ADDR: 0x%X  PUSH: 0x%X\n",
+         state_machine.real_dma_pull_addr, pull_addr_target,
+         state_machine.real_dma_push_addr, GetDMAPullAddress(),
+         GetDMAPushAddress()));
 
     // Disable PGRAPH, so it can't run anything from CACHE.
     DisablePGRAPHFIFO();
@@ -547,7 +556,7 @@ static void RunFIFO(DWORD pull_addr_target) {
     Sleep(10);
 
     // Get the updated PB address.
-    DWORD new_get_addr = GetDMAPullAddress();
+    uint32_t new_get_addr = GetDMAPullAddress();
     if (new_get_addr == state_machine.real_dma_pull_addr) {
       iterations_with_no_change += 1;
     } else {
@@ -591,36 +600,17 @@ static void GetMethodProcessors(const PushBufferCommandTraceInfo *method_info,
   }
 }
 
-static DWORD ProcessPushBufferCommand(DWORD *dma_pull_addr,
-                                      PushBufferCommandTraceInfo *method_info,
-                                      BOOL discard, BOOL skip_hooks) {
+static uint32_t ProcessPushBufferCommand(
+    uint32_t *dma_pull_addr, PushBufferCommandTraceInfo *method_info,
+    BOOL discard, BOOL skip_hooks) {
   method_info->valid = FALSE;
-  DWORD unprocessed_bytes = 0;
-
-  /*
-    self.html_log.log(
-        [
-            "WARNING",
-            "Starting FIFO parsing from 0x%08X -- 0x%08X"
-            % (pull_addr, self.real_dma_push_addr),
-        ]
-    )
-   */
+  uint32_t unprocessed_bytes = 0;
 
   if (*dma_pull_addr == state_machine.real_dma_push_addr) {
-    //    self.html_log.log(
-    //      [
-    //        "WARNING",
-    //        "Sucessfully finished FIFO parsing 0x%08X -- 0x%08X (%d bytes
-    //        unprocessed)" % (pull_addr, self.real_dma_push_addr,
-    //        unprocessed_bytes),
-    //      ]
-    //    )
     return 0;
   }
 
-  // Filter command and check where it wants to go to.
-  DWORD post_addr =
+  uint32_t post_addr =
       ParsePushBufferCommandTraceInfo(*dma_pull_addr, method_info, discard);
   if (!post_addr) {
     DeletePushBufferCommandTraceInfo(method_info);
@@ -631,7 +621,7 @@ static DWORD ProcessPushBufferCommand(DWORD *dma_pull_addr,
     DbgPrint("WARNING: No method. Going to 0x%08X", post_addr);
     unprocessed_bytes = 4;
   } else {
-    // Mark the size of the instruction + any associated parameters.
+    // Calculate the size of the instruction + any associated parameters.
     unprocessed_bytes = 4 + method_info->command.parameter_count * 4;
 
     PGRAPHCommandCallback *pre_callbacks = NULL;
@@ -676,16 +666,6 @@ static DWORD ProcessPushBufferCommand(DWORD *dma_pull_addr,
 
   *dma_pull_addr = post_addr;
 
-  /*
-    self.html_log.log(
-        [
-            "WARNING",
-            "Sucessfully finished FIFO parsing 0x%08X -- 0x%08X (%d bytes
-    unprocessed)" % (pull_addr, self.real_dma_push_addr, unprocessed_bytes),
-        ]
-    )
-  */
-
   return unprocessed_bytes;
 }
 
@@ -696,12 +676,14 @@ static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
   while (len) {
     EnterCriticalSection(critical_section);
     uint32_t bytes_written = CBWriteAvailable(cb, data, len);
+    uint32_t bytes_available = CBAvailable(cb);
     LeaveCriticalSection(critical_section);
-    if (bytes_written) {
-      notify_bytes_available(bytes_written);
-    }
+
     len -= bytes_written;
+    notify_bytes_available(bytes_available);
+
     if (len) {
+      VERBOSE_PRINT(("WriteBuffer: Circular buffer full, sleeping...\n"));
       Sleep(10);
     }
   }
@@ -722,10 +704,51 @@ static void LogCommand(const PushBufferCommandTraceInfo *info) {
   }
 }
 
-static void TraceUntilFramebufferFlip(bool discard) {
+//! Attempts to find a FLIP_STALL in the FIFO buffer, setting the `found`
+//! parameter to `TRUE` if one is found.
+//!
+//! \return FALSE on fatal error, otherwise TRUE.
+static BOOL PeekAheadForFlipStall(BOOL *found, uint32_t dma_pull_addr,
+                                  uint32_t real_dma_push_addr) {
+  // TODO: Handle the case where an inc happens near the end of the
+  // buffer.
+  //   Hold off on detecting the flip and force an additional read.
+  *found = FALSE;
+
+  uint32_t peek_dma_pull_addr = dma_pull_addr;
+  for (uint32_t i = 0; i < 5 && peek_dma_pull_addr != real_dma_push_addr; ++i) {
+    PushBufferCommandTraceInfo info;
+    uint32_t peek_unprocessed_bytes =
+        ProcessPushBufferCommand(&peek_dma_pull_addr, &info, TRUE, TRUE);
+
+    if (peek_unprocessed_bytes == 0xFFFFFFFF) {
+      DbgPrint("Failed to process pbuffer command during seek.\n");
+      SetState(STATE_FATAL_PROCESS_PUSH_BUFFER_COMMAND_FAILED);
+      return FALSE;
+    }
+
+    if (info.valid && info.graphics_class == 0x97 &&
+        info.command.method == NV097_FLIP_STALL) {
+      VERBOSE_PRINT(
+          ("Found FLIP_STALL after FLIP_INC after peeking %d "
+           "commands.\n",
+           i + 1));
+      *found = TRUE;
+      return TRUE;
+    }
+
+    if (!peek_unprocessed_bytes) {
+      return TRUE;
+    }
+  }
+  return TRUE;
+}
+
+static void TraceUntilFramebufferFlip(BOOL discard) {
   TracerState current_state = TracerGetState();
-  if (current_state != STATE_IDLE_NEW_FRAME) {
+  if (!discard && current_state != STATE_IDLE_NEW_FRAME) {
     SetState(STATE_FATAL_NOT_IN_NEW_FRAME_STATE);
+    CompleteRequest();
     return;
   }
 
@@ -733,29 +756,65 @@ static void TraceUntilFramebufferFlip(bool discard) {
       discard ? STATE_DISCARDING_UNTIL_FLIP : STATE_TRACING_UNTIL_FLIP;
   SetState(working_state);
 
-  DWORD bytes_queued = 0;
-  DWORD dma_pull_addr = state_machine.real_dma_pull_addr;
-  DWORD commands_discarded = 0;
+  uint32_t bytes_queued = 0;
+  uint32_t dma_pull_addr = state_machine.real_dma_pull_addr;
+  uint32_t commands_discarded = 0;
 
-  DWORD command_index = 1;
+  uint32_t command_index = 1;
+
+  uint32_t last_push_addr = 0;
+  uint32_t sleep_millis = 5;
+  uint32_t sleep_calls = 0;
+
   while (TracerGetState() == working_state) {
     PushBufferCommandTraceInfo info;
     info.packet_index = command_index++;
-    DWORD unprocessed_bytes =
-        ProcessPushBufferCommand(&dma_pull_addr, &info, TRUE, TRUE);
+    uint32_t unprocessed_bytes =
+        ProcessPushBufferCommand(&dma_pull_addr, &info, discard, TRUE);
     if (unprocessed_bytes == 0xFFFFFFFF) {
       SetState(STATE_FATAL_PROCESS_PUSH_BUFFER_COMMAND_FAILED);
+      CompleteRequest();
       return;
     }
     bytes_queued += unprocessed_bytes;
 
-    BOOL is_flip = info.valid && info.graphics_class == 0x97 &&
-                   (info.command.method == NV097_FLIP_STALL ||
-                    info.command.method == NV097_FLIP_INCREMENT_WRITE);
-    BOOL is_empty = dma_pull_addr == state_machine.real_dma_push_addr;
+    uint32_t real_dma_push_addr;
+    {
+      uint32_t real_dma_pull_addr;
+      if (!TracerGetDMAAddresses(&real_dma_push_addr, &real_dma_pull_addr)) {
+        DbgPrint("DMA Addresses invalid inside trace loop!\n");
+        real_dma_push_addr = 0;
+      }
+    }
+
+    BOOL is_flip = FALSE;
+    BOOL is_empty = dma_pull_addr == real_dma_push_addr;
+
+    if (info.valid && info.graphics_class == 0x97) {
+      is_flip = info.command.method == NV097_FLIP_STALL;
+
+      // The nxdk does not trigger a FLIP_STALL, but does do an increment.
+      // XDK-based titles do both an increment and a stall shortly after.
+      // On detection of an increment, a few commands are peeked to guess
+      // whether this is an nxdk title or an XDK one where the inc should not be
+      // considered a flip.
+      if (info.command.method == NV097_FLIP_INCREMENT_WRITE) {
+        VERBOSE_PRINT(("Found FLIP_INC, seeking FLIP_STALL!\n"));
+        BOOL flip_found = FALSE;
+        if (!PeekAheadForFlipStall(&flip_found, dma_pull_addr,
+                                   real_dma_push_addr)) {
+          CompleteRequest();
+          return;
+        }
+        is_flip = !flip_found;
+        VERBOSE_PRINT(
+            ("Exited FLIP_STALL search, treat FLIP_INC as stall? %s\n",
+             is_flip ? "YES" : "NO"));
+      }
+    }
 
 #ifdef VERBOSE_DEBUG
-    if (discard && info.valid & !is_flip && info.graphics_class == 0x97) {
+    if (discard && info.valid && info.graphics_class == 0x97) {
       DbgPrint("Discarding command 0x%X - 0x%X\n", info.graphics_class,
                info.command.method);
     }
@@ -764,30 +823,31 @@ static void TraceUntilFramebufferFlip(bool discard) {
     // Avoid queuing up too many bytes: while the buffer is being processed,
     // D3D might fixup the buffer if GET is still too far away.
     if (is_empty || is_flip || bytes_queued >= kMaxQueueDepthBeforeFlush) {
-      DbgPrint(
-          "Flushing buffer until (0x%08X): real_put 0x%X; bytes_queued: %d\n",
-          dma_pull_addr, state_machine.real_dma_push_addr, bytes_queued);
+      if (!is_empty) {
+        DbgPrint(
+            "Tracer: Flushing buffer until (0x%08X): real_put 0x%X; "
+            "bytes_queued: %d\n",
+            dma_pull_addr, real_dma_push_addr, bytes_queued);
+      } else {
+        DbgPrint(
+            "Tracer: No PGRAPH commands available. Real push: 0x%08X, live "
+            "push: 0x%08X, live pull: 0x%08X\n",
+            real_dma_push_addr, GetDMAPushAddress(), GetDMAPullAddress());
+      }
+
       RunFIFO(dma_pull_addr);
       bytes_queued = 0;
     }
 
-    if (is_empty) {
-      DbgPrint("Reached end of buffer with %d bytes queued?!\n", bytes_queued);
-      Sleep(1);
-      //      state_machine.xbox_helper.print_enable_states()
-      //      state_machine.xbox_helper.print_pb_state()
-      //      state_machine.xbox_helper.print_dma_state()
-      //      state_machine.xbox_helper.print_cache_state()
-    }
-
     // Verify we are where we think we are
     if (!bytes_queued) {
-      DWORD dma_pull_addr_real = GetDMAPullAddress();
+      uint32_t dma_pull_addr_real = GetDMAPullAddress();
       if (dma_pull_addr_real != dma_pull_addr) {
         DbgPrint(
             "ERROR: Corrupt state. HW (0x%08X) is not at parser (0x%08X)\n",
             dma_pull_addr_real, dma_pull_addr);
         SetState(STATE_FATAL_DISCARDING_FAILED);
+        CompleteRequest();
         return;
       }
     }
@@ -797,30 +857,54 @@ static void TraceUntilFramebufferFlip(bool discard) {
     }
 
     if (is_flip) {
-      CompleteRequest();
       SetState(STATE_IDLE_NEW_FRAME);
+      CompleteRequest();
       return;
     }
 
     if (is_empty) {
-      Sleep(0);
-    }
+      if (last_push_addr == real_dma_push_addr) {
+        sleep_millis += 10;
+        if (sleep_millis > 250 && discard) {
+          sleep_millis = 5;
+          DbgPrint("Permanent stall detected, attempting to populate FIFO\n");
+          // NOTE: EnableFIFO + ResumePusher + PausePusher + DisableFIFO is
+          // insufficient to fix this problem.
+          EnablePGRAPHFIFO();
+          MaybePopulateFIFOCache(10);
+          DisablePGRAPHFIFO();
+        }
+      } else {
+        last_push_addr = real_dma_push_addr;
+        sleep_millis = 5;
+      }
+      if (!(++sleep_calls & 0x7F)) {
+        DbgPrint("Still waiting for new pgraph commands after %u iterations\n",
+                 sleep_calls);
+      }
+      DbgPrint("Reached end of buffer with %d bytes queued - sleeping %d ms\n",
+               bytes_queued, sleep_millis);
+      Sleep(sleep_millis);
+    } else {
+      sleep_calls = 0;
 #ifdef VERBOSE_DEBUG
-    if (discard && !(++commands_discarded & 0x01FF)) {
-      DbgPrint(
-          "Awaiting flip stall... Discarded %d commands   PULL@ 0x%X  "
-          "REAL_PUSH: 0x%X  BQ: %d  MTHD: 0x%X\n",
-          commands_discarded, dma_pull_addr, state_machine.real_dma_push_addr,
-          bytes_queued, info.command.method);
-    }
+      if (discard && !(++commands_discarded & 0x01FF)) {
+        DbgPrint(
+            "Awaiting flip stall... Discarded %d commands   PULL@ 0x%X  "
+            "REAL_PUSH: 0x%X  BQ: %d  MTHD: 0x%X\n",
+            commands_discarded, dma_pull_addr, real_dma_push_addr, bytes_queued,
+            info.command.method);
+      }
 #endif
+    }
   }
 }
 
-static void DiscardUntilFramebufferFlip(void) {
+static void DiscardUntilFramebufferFlip(BOOL require_new_frame) {
   TracerState current_state = TracerGetState();
-  if (current_state == STATE_IDLE_NEW_FRAME) {
+  if (!require_new_frame && current_state == STATE_IDLE_NEW_FRAME) {
     NotifyStateChanged(current_state);
+    CompleteRequest();
     return;
   }
 

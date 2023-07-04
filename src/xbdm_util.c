@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-static inline uint32_t min(uint32_t a, uint32_t b) { return (a > b) ? a : b; }
+static inline uint32_t min(uint32_t a, uint32_t b) { return (a < b) ? a : b; }
 static HRESULT_API SendStaticBufferBinaryData(CommandContext *ctx,
                                               char *response,
                                               DWORD response_len);

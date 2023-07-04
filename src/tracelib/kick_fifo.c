@@ -5,7 +5,7 @@
 
 #define BUSY_LOOP_CYCLES 0x2000
 
-KickResult KickFIFO(DWORD expected_push) {
+KickResult KickFIFO(uint32_t expected_push) {
   KickResult ret = KICK_BAD_READ_PUSH_ADDR;
 
   // Avoid any other CPU stuff overwriting stuff in this risky section
@@ -24,7 +24,7 @@ KickResult KickFIFO(DWORD expected_push) {
   // becomes empty, but it is assumed that the caller may want to provide some
   // timeout mechanism.
   for (; i < BUSY_LOOP_CYCLES; ++i) {
-    DWORD state = ReadDWORD(CACHE_PUSH_STATE);
+    uint32_t state = ReadDWORD(CACHE_PUSH_STATE);
     if (!(state & NV_PFIFO_CACHE1_DMA_PUSH_BUFFER)) {
       ret = KICK_OK;
       break;

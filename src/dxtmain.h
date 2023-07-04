@@ -29,7 +29,7 @@ extern "C" {
 
 typedef struct CommandTableEntry {
   const char *command;
-  HRESULT (*processor)(const char *, char *, DWORD, CommandContext *);
+  HRESULT (*processor)(const char *, char *, uint32_t, CommandContext *);
 } CommandTableEntry;
 
 extern const CommandTableEntry *kCommandTable;

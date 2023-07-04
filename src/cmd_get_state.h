@@ -6,7 +6,7 @@
 #define CMD_GET_STATE "state"
 
 // Returns the current tracer state.
-HRESULT HandleGetState(const char *command, char *response, DWORD response_len,
-                       CommandContext *ctx);
+HRESULT HandleGetState(const char *command, char *response,
+                       uint32_t response_len, CommandContext *ctx);
 
 #endif  // NV2A_TRACE_CMD_GET_STATE_H

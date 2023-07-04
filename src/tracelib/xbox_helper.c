@@ -2,19 +2,19 @@
 
 #include "register_defs.h"
 
-DWORD ReadDWORD(intptr_t address) { return *(volatile DWORD *)(address); }
+uint32_t ReadDWORD(intptr_t address) { return *(volatile uint32_t *)(address); }
 
-void WriteDWORD(intptr_t address, DWORD value) {
-  *(volatile DWORD *)(address) = value;
+void WriteDWORD(intptr_t address, uint32_t value) {
+  *(volatile uint32_t *)(address) = value;
 }
 
 void DisablePGRAPHFIFO(void) {
-  DWORD state = ReadDWORD(PGRAPH_STATE);
+  uint32_t state = ReadDWORD(PGRAPH_STATE);
   WriteDWORD(PGRAPH_STATE, state & 0xFFFFFFFE);
 }
 
 void EnablePGRAPHFIFO(void) {
-  DWORD state = ReadDWORD(PGRAPH_STATE);
+  uint32_t state = ReadDWORD(PGRAPH_STATE);
   WriteDWORD(PGRAPH_STATE, state | 0x00000001);
 }
 
@@ -24,44 +24,47 @@ void BusyWaitUntilPGRAPHIdle(void) {
 }
 
 void PauseFIFOPuller(void) {
-  DWORD state = ReadDWORD(CACHE_PULL_STATE);
+  uint32_t state = ReadDWORD(CACHE_PULL_STATE);
   WriteDWORD(CACHE_PULL_STATE, state & 0xFFFFFFFE);
 }
 
 void ResumeFIFOPuller(void) {
-  DWORD state = ReadDWORD(CACHE_PULL_STATE);
+  uint32_t state = ReadDWORD(CACHE_PULL_STATE);
   WriteDWORD(CACHE_PULL_STATE, state | 0x00000001);
 }
 
 void PauseFIFOPusher(void) {
-  DWORD state = ReadDWORD(CACHE_PUSH_STATE);
+  uint32_t state = ReadDWORD(CACHE_PUSH_STATE);
   WriteDWORD(CACHE_PUSH_STATE, state & 0xFFFFFFFE);
 }
 
 void ResumeFIFOPusher(void) {
-  DWORD state = ReadDWORD(CACHE_PUSH_STATE);
+  uint32_t state = ReadDWORD(CACHE_PUSH_STATE);
   WriteDWORD(CACHE_PUSH_STATE, state | 0x00000001);
 }
 
 void BusyWaitUntilPusherIDLE(void) {
-  const DWORD busy_bit = 1 << 4;
+  const uint32_t busy_bit = 1 << 4;
   while (ReadDWORD(CACHE_PUSH_STATE) & busy_bit) {
   }
 }
 
-void MaybePopulateFIFOCache(void) {
+void MaybePopulateFIFOCache(uint32_t sleep_milliseconds) {
   ResumeFIFOPusher();
+  if (sleep_milliseconds) {
+    Sleep(sleep_milliseconds);
+  }
   PauseFIFOPusher();
 }
 
-DWORD GetDMAPushAddress(void) { return ReadDWORD(DMA_PUSH_ADDR); }
+uint32_t GetDMAPushAddress(void) { return ReadDWORD(DMA_PUSH_ADDR); }
 
-DWORD GetDMAPullAddress(void) { return ReadDWORD(DMA_PULL_ADDR); }
+uint32_t GetDMAPullAddress(void) { return ReadDWORD(DMA_PULL_ADDR); }
 
-void SetDMAPushAddress(DWORD target) { WriteDWORD(DMA_PUSH_ADDR, target); }
+void SetDMAPushAddress(uint32_t target) { WriteDWORD(DMA_PUSH_ADDR, target); }
 
 void GetDMAState(DMAState *state) {
-  DWORD dma_state = ReadDWORD(DMA_STATE);
+  uint32_t dma_state = ReadDWORD(DMA_STATE);
 
   state->non_increasing = (dma_state & 0x01) != 0;
   state->method = (dma_state >> 2) & 0x1FFF;
@@ -70,7 +73,7 @@ void GetDMAState(DMAState *state) {
   state->error = (dma_state >> 29) & 0x07;
 }
 
-DWORD FetchActiveGraphicsClass(void) {
-  DWORD ctx_switch_1 = ReadDWORD(CTX_SWITCH1);
+uint32_t FetchActiveGraphicsClass(void) {
+  uint32_t ctx_switch_1 = ReadDWORD(CTX_SWITCH1);
   return ctx_switch_1 & 0xFF;
 }

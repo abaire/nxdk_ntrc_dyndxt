@@ -4,7 +4,7 @@
 
 #include "tracelib/tracer_state_machine.h"
 
-HRESULT HandleDetach(const char *command, char *response, DWORD response_len,
+HRESULT HandleDetach(const char *command, char *response, uint32_t response_len,
                      CommandContext *ctx) {
   TracerShutdown();
   snprintf(response, response_len, "Tracer shutdown requested");

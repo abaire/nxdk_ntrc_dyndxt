@@ -14,7 +14,7 @@
 //! complicated multi-call response. \return XBOX specific HRESULT (e.g.,
 //! XBOX_S_OK). See `xbdm_err.h`.
 //!
-//! Command sring parameters:
+//! Command string parameters:
 //!   psize - uint32 indicating the size in bytes to reserve for the pgraph
 //!           circular buffer.
 //!   gsize - uint32 indicating the size in bytes to reserve for the graphics
@@ -27,7 +27,7 @@
 //!           performed.
 //!   rdicap - uint32 boolean indicating whether RDI captures should be
 //!           performed (this has significant performance impact).
-HRESULT HandleAttach(const char *command, char *response, DWORD response_len,
+HRESULT HandleAttach(const char *command, char *response, uint32_t response_len,
                      CommandContext *ctx);
 
 #endif  // NV2A_TRACE_CMD_ATTACH_H

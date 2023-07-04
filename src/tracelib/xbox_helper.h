@@ -11,17 +11,17 @@ extern "C" {
 
 typedef struct DMAState {
   BOOL non_increasing;
-  DWORD method;
-  DWORD subchannel;
-  DWORD method_count;
-  DWORD error;
+  uint32_t method;
+  uint32_t subchannel;
+  uint32_t method_count;
+  uint32_t error;
 } DMAState;
 
-// Returns a DWORD value from the given address.
-DWORD ReadDWORD(intptr_t address);
+//! Returns a uint32_t value from the given address.
+uint32_t ReadDWORD(intptr_t address);
 
-// Writes the given DWORD value to the given address.
-void WriteDWORD(intptr_t address, DWORD value);
+//! Writes the given uint32_t value to the given address.
+void WriteDWORD(intptr_t address, uint32_t value);
 
 void DisablePGRAPHFIFO(void);
 void EnablePGRAPHFIFO(void);
@@ -34,18 +34,18 @@ void PauseFIFOPusher(void);
 void ResumeFIFOPusher(void);
 void BusyWaitUntilPusherIDLE(void);
 
-// Attempt to populate the FIFO cache by briefly unpausing the pusher.
-// The pusher will be left in a paused state on exit.
-void MaybePopulateFIFOCache(void);
+//! Attempt to populate the FIFO cache by briefly unpausing the pusher.
+//! The pusher will be left in a paused state on exit.
+void MaybePopulateFIFOCache(uint32_t sleep_milliseconds);
 
-DWORD GetDMAPushAddress(void);
-DWORD GetDMAPullAddress(void);
-void SetDMAPushAddress(DWORD target);
+uint32_t GetDMAPushAddress(void);
+uint32_t GetDMAPullAddress(void);
+void SetDMAPushAddress(uint32_t target);
 
 void GetDMAState(DMAState *result);
 
 // Returns the current PGRAPH graphics class.
-DWORD FetchActiveGraphicsClass(void);
+uint32_t FetchActiveGraphicsClass(void);
 
 #ifdef __cplusplus
 }  // extern "C"

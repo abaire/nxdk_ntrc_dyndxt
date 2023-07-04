@@ -7,7 +7,7 @@
 #include "xbdm.h"
 
 HRESULT HandleWaitForStablePushBufferState(const char *command, char *response,
-                                           DWORD response_len,
+                                           uint32_t response_len,
                                            CommandContext *ctx) {
   HRESULT ret = TracerBeginWaitForStablePushBufferState();
 

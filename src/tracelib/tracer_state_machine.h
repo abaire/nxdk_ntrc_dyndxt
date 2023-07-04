@@ -11,10 +11,10 @@ extern "C" {
 
 typedef struct TracerConfig {
   // Number of bytes to reserve for pgraph command capture.
-  DWORD pgraph_circular_buffer_size;
+  uint32_t pgraph_circular_buffer_size;
 
   // Number of bytes to reserve for color/depth buffer capture.
-  DWORD graphics_circular_buffer_size;
+  uint32_t graphics_circular_buffer_size;
 
   // Enables capture of RDI state into the graphics circular buffer.
   BOOL rdi_capture_enabled;
@@ -57,12 +57,15 @@ HRESULT TracerCreate(const TracerConfig *config);
 void TracerShutdown(void);
 
 TracerState TracerGetState(void);
-BOOL TracerGetDMAAddresses(DWORD *push_addr, DWORD *pull_addr);
+
+//! Fetches the last saved DMA addresses. Returns TRUE if they are valid, else
+//! FALSE.
+BOOL TracerGetDMAAddresses(uint32_t *push_addr, uint32_t *pull_addr);
 
 //! True if a request is actively being processed.
 BOOL TracerIsProcessingRequest(void);
 HRESULT TracerBeginWaitForStablePushBufferState(void);
-HRESULT TracerBeginDiscardUntilFlip(void);
+HRESULT TracerBeginDiscardUntilFlip(BOOL require_new_frame);
 HRESULT TracerTraceCurrentFrame(void);
 
 //! Locks the PGRAPH buffer to prevent writing, returning the bytes available in

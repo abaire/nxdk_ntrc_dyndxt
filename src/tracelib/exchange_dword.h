@@ -7,9 +7,9 @@
 extern "C" {
 #endif
 
-// Writes the given DWORD value to the given address, returning the previous
+// Writes the given uint32_t value to the given address, returning the previous
 // value.
-DWORD ExchangeDWORD(intptr_t address, DWORD value);
+uint32_t ExchangeDWORD(intptr_t address, uint32_t value);
 
 #ifdef __cplusplus
 };  // extern "C"

@@ -5,7 +5,7 @@
 #include "command_processor_util.h"
 #include "tracelib/tracer_state_machine.h"
 
-HRESULT HandleAttach(const char *command, char *response, DWORD response_len,
+HRESULT HandleAttach(const char *command, char *response, uint32_t response_len,
                      CommandContext *ctx) {
   TracerConfig config;
   TracerGetDefaultConfig(&config);

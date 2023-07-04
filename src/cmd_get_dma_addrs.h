@@ -7,6 +7,6 @@
 
 // Returns the current DMA addresses from the tracer.
 HRESULT HandleGetDMAAddrs(const char *command, char *response,
-                          DWORD response_len, CommandContext *ctx);
+                          uint32_t response_len, CommandContext *ctx);
 
 #endif  // NV2A_TRACE_CMD_GET_DMA_ADDRS_H

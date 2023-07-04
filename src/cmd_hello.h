@@ -6,7 +6,7 @@
 #define CMD_HELLO "hello"
 
 // Enumerates the command table.
-HRESULT HandleHello(const char *command, char *response, DWORD response_len,
+HRESULT HandleHello(const char *command, char *response, uint32_t response_len,
                     CommandContext *ctx);
 
 #endif  // NV2A_TRACE_CMD_HELLO_H

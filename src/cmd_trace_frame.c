@@ -6,7 +6,7 @@
 #include "tracelib/tracer_state_machine.h"
 
 HRESULT HandleTraceFrame(const char *command, char *response,
-                         DWORD response_len, CommandContext *ctx) {
+                         uint32_t response_len, CommandContext *ctx) {
   HRESULT ret = TracerTraceCurrentFrame();
 
   if (XBOX_SUCCESS(ret)) {

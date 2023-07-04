@@ -7,7 +7,7 @@
 
 // Puts the state machine into a wait loop until the push buffer is stable.
 HRESULT HandleWaitForStablePushBufferState(const char *command, char *response,
-                                           DWORD response_len,
+                                           uint32_t response_len,
                                            CommandContext *ctx);
 
 #endif  // NV2A_TRACE_CMD_WAIT_FOR_STABLE_PUSH_BUFFER_STATE_H

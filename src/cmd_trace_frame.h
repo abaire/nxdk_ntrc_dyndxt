@@ -9,6 +9,6 @@
 // of a frame (via HandleWaitForStablePushBufferState and HandleDiscardUntilFlip
 // respectively).
 HRESULT HandleTraceFrame(const char *command, char *response,
-                         DWORD response_len, CommandContext *ctx);
+                         uint32_t response_len, CommandContext *ctx);
 
 #endif  // NTRC_DYNDXT_SRC_CMD_TRACE_FRAME_H_
