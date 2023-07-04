@@ -32,16 +32,20 @@ typedef struct TracerConfig {
 // Callback to be invoked when the tracer state changes.
 typedef void (*NotifyStateChangedHandler)(TracerState);
 
+// Callback to be invoked when a request has been completed.
+typedef void (*NotifyRequestProcessedHandler)(void);
+
 // Callback to be invoked when bytes are written to a circular buffer.
-typedef void (*NotifyBytesAvailable)(uint32_t bytes_written);
+typedef void (*NotifyBytesAvailableHandler)(uint32_t bytes_written);
 
 //! Initializes the tracer library.
 //! The given function will be called anytime the tracer state machine changes
 //! state.
 HRESULT TracerInitialize(
     NotifyStateChangedHandler on_notify_state_changed,
-    NotifyBytesAvailable on_pgraph_buffer_bytes_available,
-    NotifyBytesAvailable on_graphics_buffer_bytes_available);
+    NotifyRequestProcessedHandler on_notify_request_processed,
+    NotifyBytesAvailableHandler on_pgraph_buffer_bytes_available,
+    NotifyBytesAvailableHandler on_graphics_buffer_bytes_available);
 
 //! Populates the given TracerConfig with default values.
 void TracerGetDefaultConfig(TracerConfig *config);

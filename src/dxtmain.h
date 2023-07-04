@@ -7,6 +7,7 @@
 //
 //   new_state=<state_number> - Notifies of a state change in the tracer state
 //       machine. See the `TracerState` enum.
+//   req_processed - Notifies that some client-initiated request has completed.
 //   w_pgraph=<new_bytes_writtem> - Notifies that bytes have been written to the
 //       PGRAPH trace buffer and may be retrieved via a `read_pgraph` call. It
 //       is important to perform a read to avoid having the buffer fill up,

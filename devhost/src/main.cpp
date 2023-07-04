@@ -26,6 +26,7 @@ static void CreateGeometry(Renderer& renderer);
 static std::atomic_bool has_rendered_frame(false);
 
 static std::atomic<TracerState> tracer_state;
+static std::atomic_bool request_processed(false);
 
 static void OnTracerStateChanged(TracerState new_state) {
   std::string state_name;
@@ -59,6 +60,8 @@ static void OnTracerStateChanged(TracerState new_state) {
   PrintMsg("Tracer state changed: %s[%d]", state_name.c_str(), new_state);
   tracer_state = new_state;
 }
+
+static void OnRequestProcessed() { request_processed = true; }
 
 static void OnPGRAPHBytesAvailable(uint32_t bytes_written) {
   PrintMsg("New PGRAPH bytes available: %u", bytes_written);
@@ -103,8 +106,9 @@ TracerThreadMain(LPVOID lpThreadParameter) {
     Sleep(1);
   }
 
-  auto init_result = TracerInitialize(
-      OnTracerStateChanged, OnPGRAPHBytesAvailable, OnGraphicsBytesAvailable);
+  auto init_result =
+      TracerInitialize(OnTracerStateChanged, OnRequestProcessed,
+                       OnPGRAPHBytesAvailable, OnGraphicsBytesAvailable);
   if (!XBOX_SUCCESS(init_result)) {
     PrintMsg("Failed to initialize tracer: 0x%X", init_result);
     return init_result;
@@ -122,6 +126,7 @@ TracerThreadMain(LPVOID lpThreadParameter) {
 
   //  TracerCreate
   PrintMsg("About to start wait for stable pbuffer state...");
+  request_processed = false;
   if (!TracerBeginWaitForStablePushBufferState()) {
     PrintMsg("TracerBeginWaitForStablePushBufferState failed!");
     TracerShutdown();
@@ -132,6 +137,7 @@ TracerThreadMain(LPVOID lpThreadParameter) {
   PrintMsg("Achieved stable pbuffer state...");
 
   PrintMsg("About to discard until next frame flip...");
+  request_processed = false;
   if (!TracerBeginDiscardUntilFlip()) {
     PrintMsg("TracerBeginDiscardUntilFlip failed!");
     TracerShutdown();
@@ -141,6 +147,7 @@ TracerThreadMain(LPVOID lpThreadParameter) {
   }
   PrintMsg("New frame started!");
 
+  request_processed = false;
   if (!TracerTraceCurrentFrame()) {
     PrintMsg("TracerTraceCurrentFrame failed!");
     TracerShutdown();

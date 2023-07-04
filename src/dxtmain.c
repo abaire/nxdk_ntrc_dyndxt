@@ -42,11 +42,13 @@ static HRESULT_API ProcessCommand(const char *command, char *response,
                                   DWORD response_len,
                                   struct CommandContext *ctx);
 static void OnTracerStateChanged(TracerState new_state);
+static void OnRequestProcessed(void);
 static void OnPGRAPHBufferBytesAvailable(uint32_t new_bytes);
 static void OnGraphicsBufferBytesAvailable(uint32_t new_bytes);
 
 HRESULT DXTMain(void) {
-  TracerInitialize(OnTracerStateChanged, OnPGRAPHBufferBytesAvailable,
+  TracerInitialize(OnTracerStateChanged, OnRequestProcessed,
+                   OnPGRAPHBufferBytesAvailable,
                    OnGraphicsBufferBytesAvailable);
   return DmRegisterCommandProcessor(kHandlerName, ProcessCommand);
 }
@@ -70,6 +72,12 @@ static HRESULT_API ProcessCommand(const char *command, char *response,
 static void OnTracerStateChanged(TracerState new_state) {
   char buf[128];
   snprintf(buf, sizeof(buf), "%s!new_state=0x%X", kHandlerName, new_state);
+  DmSendNotificationString(buf);
+}
+
+static void OnRequestProcessed() {
+  char buf[32];
+  snprintf(buf, sizeof(buf), "%s!req_processed", kHandlerName);
   DmSendNotificationString(buf);
 }
 

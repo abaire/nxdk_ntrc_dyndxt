@@ -31,8 +31,9 @@ typedef struct TracerStateMachine {
   DWORD target_dma_push_addr;
 
   NotifyStateChangedHandler on_notify_state_changed;
-  NotifyBytesAvailable on_pgraph_buffer_bytes_available;
-  NotifyBytesAvailable on_graphics_buffer_bytes_available;
+  NotifyRequestProcessedHandler on_notify_request_processed;
+  NotifyBytesAvailableHandler on_pgraph_buffer_bytes_available;
+  NotifyBytesAvailableHandler on_graphics_buffer_bytes_available;
 
   TracerConfig config;
   CRITICAL_SECTION pgraph_critical_section;
@@ -90,8 +91,9 @@ static void Free(void *block) { return DmFreePool(block); }
 
 HRESULT TracerInitialize(
     NotifyStateChangedHandler on_notify_state_changed,
-    NotifyBytesAvailable on_pgraph_buffer_bytes_available,
-    NotifyBytesAvailable on_graphics_buffer_bytes_available) {
+    NotifyRequestProcessedHandler on_notify_request_processed,
+    NotifyBytesAvailableHandler on_pgraph_buffer_bytes_available,
+    NotifyBytesAvailableHandler on_graphics_buffer_bytes_available) {
   if (!on_notify_state_changed) {
     DbgPrint("Invalid on_notify_state_changed handler.");
     return XBOX_E_FAIL;
@@ -102,6 +104,7 @@ HRESULT TracerInitialize(
   }
 
   state_machine.on_notify_state_changed = on_notify_state_changed;
+  state_machine.on_notify_request_processed = on_notify_request_processed;
   state_machine.on_pgraph_buffer_bytes_available =
       on_pgraph_buffer_bytes_available;
   state_machine.on_graphics_buffer_bytes_available =
@@ -199,6 +202,13 @@ static void NotifyStateChanged(TracerState new_state) {
     return;
   }
   state_machine.on_notify_state_changed(new_state);
+}
+
+static void NotifyRequestProcessed() {
+  if (!state_machine.on_notify_request_processed) {
+    return;
+  }
+  state_machine.on_notify_request_processed();
 }
 
 static void SetState(TracerState new_state) {
@@ -328,14 +338,17 @@ TracerThreadMain(LPVOID lpThreadParameter) {
     switch (request) {
       case REQ_WAIT_FOR_STABLE_PUSH_BUFFER:
         WaitForStablePushBufferState();
+        NotifyRequestProcessed();
         break;
 
       case REQ_DISCARD_UNTIL_FLIP:
         DiscardUntilFramebufferFlip();
+        NotifyRequestProcessed();
         break;
 
       case REQ_TRACE_UNTIL_FLIP:
         TraceUntilFramebufferFlip(false);
+        NotifyRequestProcessed();
         break;
 
       case REQ_NONE:
@@ -677,7 +690,7 @@ static DWORD ProcessPushBufferCommand(DWORD *dma_pull_addr,
 }
 
 //! Write all of the given data to the given circular buffer.
-static void WriteBuffer(NotifyBytesAvailable notify_bytes_available,
+static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
                         CRITICAL_SECTION *critical_section, CircularBuffer cb,
                         const void *data, uint32_t len) {
   while (len) {
