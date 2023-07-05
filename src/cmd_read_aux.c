@@ -1,4 +1,4 @@
-#include "cmd_read_graphics.h"
+#include "cmd_read_aux.h"
 
 #include <string.h>
 
@@ -8,12 +8,12 @@
 static SendPrepopulatedBinaryDataContext send_context;
 static uint8_t read_buffer[4096];
 
-HRESULT HandleReadGraphics(const char *command, char *response,
-                           uint32_t response_len, CommandContext *ctx) {
-  TracerLockGraphicsBuffer();
+HRESULT HandleReadAux(const char *command, char *response,
+                      uint32_t response_len, CommandContext *ctx) {
+  TracerLockAuxBuffer();
   uint32_t valid_bytes =
-      TracerReadGraphicsBuffer(read_buffer + 4, sizeof(read_buffer) - 4);
-  TracerUnlockGraphicsBuffer();
+      TracerReadAuxBuffer(read_buffer + 4, sizeof(read_buffer) - 4);
+  TracerUnlockAuxBuffer();
   if (!valid_bytes) {
     return XBOX_E_DATA_NOT_AVAILABLE;
   }

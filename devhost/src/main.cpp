@@ -74,12 +74,11 @@ static void OnPGRAPHBytesAvailable(uint32_t bytes_written) {
 
 static void OnGraphicsBytesAvailable(uint32_t bytes_written) {
   PrintMsg("New graphics bytes available: %u", bytes_written);
-  TracerLockGraphicsBuffer();
+  TracerLockAuxBuffer();
   std::vector<uint8_t> discard_buffer(1024);
-  while (
-      TracerReadGraphicsBuffer(discard_buffer.data(), discard_buffer.size())) {
+  while (TracerReadAuxBuffer(discard_buffer.data(), discard_buffer.size())) {
   }
-  TracerUnlockGraphicsBuffer();
+  TracerUnlockAuxBuffer();
 }
 
 static void WaitForState(TracerState state) {

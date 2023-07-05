@@ -9,7 +9,7 @@
 #include "cmd_get_dma_addrs.h"
 #include "cmd_get_state.h"
 #include "cmd_hello.h"
-#include "cmd_read_graphics.h"
+#include "cmd_read_aux.h"
 #include "cmd_read_pgraph.h"
 #include "cmd_trace_frame.h"
 #include "cmd_wait_for_stable_push_buffer_state.h"
@@ -29,7 +29,7 @@ static const CommandTableEntry kCommandTableDef[] = {
     {CMD_GET_DMA_ADDRS, HandleGetDMAAddrs},
     {CMD_GET_STATE, HandleGetState},
     {CMD_HELLO, HandleHello},
-    {CMD_READ_GRAPHICS, HandleReadGraphics},
+    {CMD_READ_AUX, HandleReadAux},
     {CMD_READ_PGRAPH, HandleReadPGRAPH},
     {CMD_TRACE_FRAME, HandleTraceFrame},
     {CMD_WAIT_FOR_STABLE_PUSH_BUFFER, HandleWaitForStablePushBufferState},
@@ -44,12 +44,11 @@ static HRESULT_API ProcessCommand(const char *command, char *response,
 static void OnTracerStateChanged(TracerState new_state);
 static void OnRequestProcessed(void);
 static void OnPGRAPHBufferBytesAvailable(uint32_t new_bytes);
-static void OnGraphicsBufferBytesAvailable(uint32_t new_bytes);
+static void OnAuxBufferBytesAvailable(uint32_t new_bytes);
 
 HRESULT DXTMain(void) {
   TracerInitialize(OnTracerStateChanged, OnRequestProcessed,
-                   OnPGRAPHBufferBytesAvailable,
-                   OnGraphicsBufferBytesAvailable);
+                   OnPGRAPHBufferBytesAvailable, OnAuxBufferBytesAvailable);
   return DmRegisterCommandProcessor(kHandlerName, ProcessCommand);
 }
 
@@ -87,7 +86,7 @@ static void OnPGRAPHBufferBytesAvailable(uint32_t new_bytes) {
   DmSendNotificationString(buf);
 }
 
-static void OnGraphicsBufferBytesAvailable(uint32_t new_bytes) {
+static void OnAuxBufferBytesAvailable(uint32_t new_bytes) {
   char buf[128];
   snprintf(buf, sizeof(buf), "%s!w_graphics=0x%X", kHandlerName, new_bytes);
   DmSendNotificationString(buf);

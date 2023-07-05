@@ -41,13 +41,13 @@ typedef struct TracerStateMachine {
   NotifyStateChangedHandler on_notify_state_changed;
   NotifyRequestProcessedHandler on_notify_request_processed;
   NotifyBytesAvailableHandler on_pgraph_buffer_bytes_available;
-  NotifyBytesAvailableHandler on_graphics_buffer_bytes_available;
+  NotifyBytesAvailableHandler on_aux_buffer_bytes_available;
 
   TracerConfig config;
   CRITICAL_SECTION pgraph_critical_section;
   CircularBuffer pgraph_buffer;
-  CRITICAL_SECTION graphics_critical_section;
-  CircularBuffer graphics_buffer;
+  CRITICAL_SECTION aux_critical_section;
+  CircularBuffer aux_buffer;
 } TracerStateMachine;
 
 //! Describes a callback that may be called before/after a PGRAPH command is
@@ -123,7 +123,7 @@ HRESULT TracerInitialize(
     NotifyStateChangedHandler on_notify_state_changed,
     NotifyRequestProcessedHandler on_notify_request_processed,
     NotifyBytesAvailableHandler on_pgraph_buffer_bytes_available,
-    NotifyBytesAvailableHandler on_graphics_buffer_bytes_available) {
+    NotifyBytesAvailableHandler on_aux_buffer_bytes_available) {
   if (!on_notify_state_changed) {
     DbgPrint("Invalid on_notify_state_changed handler.");
     return XBOX_E_FAIL;
@@ -133,13 +133,12 @@ HRESULT TracerInitialize(
   state_machine.on_notify_request_processed = on_notify_request_processed;
   state_machine.on_pgraph_buffer_bytes_available =
       on_pgraph_buffer_bytes_available;
-  state_machine.on_graphics_buffer_bytes_available =
-      on_graphics_buffer_bytes_available;
+  state_machine.on_aux_buffer_bytes_available = on_aux_buffer_bytes_available;
 
   state_machine.state = STATE_UNINITIALIZED;
   InitializeCriticalSection(&state_machine.state_critical_section);
   InitializeCriticalSection(&state_machine.pgraph_critical_section);
-  InitializeCriticalSection(&state_machine.graphics_critical_section);
+  InitializeCriticalSection(&state_machine.aux_critical_section);
 
   return XBOX_S_OK;
 }
@@ -169,16 +168,16 @@ HRESULT TracerCreate(const TracerConfig *config) {
   if (config->rdi_capture_enabled || config->surface_color_capture_enabled ||
       config->surface_depth_capture_enabled ||
       config->texture_capture_enabled) {
-    state_machine.graphics_buffer =
+    state_machine.aux_buffer =
         CBCreateEx(config->graphics_circular_buffer_size, Allocator, Free);
-    if (!state_machine.graphics_buffer) {
+    if (!state_machine.aux_buffer) {
       return XBOX_E_ACCESS_DENIED;
     }
   }
   state_machine.pgraph_buffer =
       CBCreateEx(config->pgraph_circular_buffer_size, Allocator, Free);
   if (!state_machine.pgraph_buffer) {
-    CBDestroy(state_machine.graphics_buffer);
+    CBDestroy(state_machine.aux_buffer);
     return XBOX_E_ACCESS_DENIED;
   }
 
@@ -186,7 +185,7 @@ HRESULT TracerCreate(const TracerConfig *config) {
       NULL, 0, TracerThreadMain, NULL, 0, &state_machine.processor_thread_id);
   if (!state_machine.processor_thread) {
     SetState(STATE_UNINITIALIZED);
-    CBDestroy(state_machine.graphics_buffer);
+    CBDestroy(state_machine.aux_buffer);
     CBDestroy(state_machine.pgraph_buffer);
     return XBOX_E_FAIL;
   }
@@ -334,19 +333,19 @@ void TracerUnlockPGRAPHBuffer(void) {
   LeaveCriticalSection(&state_machine.pgraph_critical_section);
 }
 
-//! Locks the Graphics buffer to prevent writing, returning the bytes available
-//! in the buffer.
-uint32_t TracerLockGraphicsBuffer(void) {
-  EnterCriticalSection(&state_machine.graphics_critical_section);
-  return CBAvailable(state_machine.graphics_buffer);
+//! Locks the auxilliary buffer to prevent writing, returning the bytes
+//! available in the buffer.
+uint32_t TracerLockAuxBuffer(void) {
+  EnterCriticalSection(&state_machine.aux_critical_section);
+  return CBAvailable(state_machine.aux_buffer);
 }
 
-uint32_t TracerReadGraphicsBuffer(void *buffer, uint32_t size) {
-  return CBReadAvailable(state_machine.graphics_buffer, buffer, size);
+uint32_t TracerReadAuxBuffer(void *buffer, uint32_t size) {
+  return CBReadAvailable(state_machine.aux_buffer, buffer, size);
 }
 
-void TracerUnlockGraphicsBuffer(void) {
-  LeaveCriticalSection(&state_machine.graphics_critical_section);
+void TracerUnlockAuxBuffer(void) {
+  LeaveCriticalSection(&state_machine.aux_critical_section);
 }
 
 static DWORD __attribute__((stdcall))
@@ -413,14 +412,14 @@ static void Shutdown(void) {
   // We can continue the cache updates now.
   ResumeFIFOPusher();
 
-  CBDestroy(state_machine.graphics_buffer);
+  CBDestroy(state_machine.aux_buffer);
   CBDestroy(state_machine.pgraph_buffer);
 
   SetState(STATE_SHUTDOWN);
 
   DeleteCriticalSection(&state_machine.state_critical_section);
   DeleteCriticalSection(&state_machine.pgraph_critical_section);
-  DeleteCriticalSection(&state_machine.graphics_critical_section);
+  DeleteCriticalSection(&state_machine.aux_critical_section);
 }
 
 static void WaitForStablePushBufferState(void) {
@@ -650,12 +649,12 @@ static void LogAuxData(const PushBufferCommandTraceInfo *trigger,
   }
 
   AuxDataHeader header = {trigger->packet_index, type, len};
-  WriteBuffer(state_machine.on_graphics_buffer_bytes_available,
-              &state_machine.graphics_critical_section,
-              state_machine.graphics_buffer, &header, sizeof(header));
-  WriteBuffer(state_machine.on_graphics_buffer_bytes_available,
-              &state_machine.graphics_critical_section,
-              state_machine.graphics_buffer, data, len);
+  WriteBuffer(state_machine.on_aux_buffer_bytes_available,
+              &state_machine.aux_critical_section, state_machine.aux_buffer,
+              &header, sizeof(header));
+  WriteBuffer(state_machine.on_aux_buffer_bytes_available,
+              &state_machine.aux_critical_section, state_machine.aux_buffer,
+              data, len);
 }
 
 static uint32_t ProcessPushBufferCommand(

@@ -161,8 +161,8 @@ add_library(
         src/cmd_get_state.h
         src/cmd_hello.c
         src/cmd_hello.h
-        src/cmd_read_graphics.c
-        src/cmd_read_graphics.h
+        src/cmd_read_aux.c
+        src/cmd_read_aux.h
         src/cmd_read_pgraph.c
         src/cmd_read_pgraph.h
         src/cmd_trace_frame.c
