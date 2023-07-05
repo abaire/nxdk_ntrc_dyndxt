@@ -696,11 +696,12 @@ static void LogCommand(const PushBufferCommandTraceInfo *info) {
   WriteBuffer(state_machine.on_pgraph_buffer_bytes_available,
               &state_machine.pgraph_critical_section,
               state_machine.pgraph_buffer, info, sizeof(*info));
-  if (info->data && info->command.parameter_count) {
+  if (info->data.data_state == PBCPDS_HEAP_BUFFER &&
+      info->command.parameter_count) {
     uint32_t data_size = info->command.parameter_count * 4;
     WriteBuffer(state_machine.on_pgraph_buffer_bytes_available,
                 &state_machine.pgraph_critical_section,
-                state_machine.pgraph_buffer, info->data, data_size);
+                state_machine.pgraph_buffer, info->data.data.buffer, data_size);
   }
 }
 

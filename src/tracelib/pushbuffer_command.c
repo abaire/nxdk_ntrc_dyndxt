@@ -91,11 +91,38 @@ uint32_t ParsePushBufferCommand(uint32_t addr, uint32_t command,
   return addr;
 }
 
+static BOOL ReadParameters(uint32_t pull_addr, uint32_t count,
+                           PushBufferCommandParameters *data) {
+  uint32_t data_len = count * 4;
+  const uint8_t *data_addr = (const uint8_t *)(PB_ADDR(pull_addr));
+  data_addr += 4;
+
+  if (data_len <= sizeof(data->data.buffer)) {
+    data->data_state = PBCPDS_SMALL_BUFFER;
+    memcpy(data->data.buffer, data_addr, data_len);
+    return TRUE;
+  }
+
+  data->data.heap_buffer = (uint8_t *)DmAllocatePoolWithTag(data_len, kTag);
+  if (!data->data.heap_buffer) {
+    DbgPrint(
+        "Allocation failed processing %d data bytes for command at 0x%08X\n",
+        data_len, pull_addr);
+    data->data_state = PBCPDS_INVALID;
+    return FALSE;
+  }
+
+  data->data_state = PBCPDS_HEAP_BUFFER;
+  memcpy(data->data.heap_buffer, data_addr, data_len);
+
+  return TRUE;
+}
+
 uint32_t ParsePushBufferCommandTraceInfo(uint32_t pull_addr,
                                          PushBufferCommandTraceInfo *info,
                                          BOOL discard_parameters) {
   info->valid = FALSE;
-  info->data = NULL;
+  info->data.data_state = PBCPDS_INVALID;
 
   // Retrieve command type from Xbox
   uint32_t raw_cmd = ReadDWORD(PB_ADDR(pull_addr));
@@ -126,20 +153,13 @@ uint32_t ParsePushBufferCommandTraceInfo(uint32_t pull_addr,
     // Note: Halo: CE has cases where `parameter_count` == 0 that must be
     // accounted for.
     if (info->command.parameter_count && !discard_parameters) {
-      uint32_t data_len = info->command.parameter_count * 4;
-      info->data = (uint8_t *)DmAllocatePoolWithTag(data_len, kTag);
-      if (!info->data) {
+      if (!ReadParameters(pull_addr, info->command.parameter_count,
+                          &info->data)) {
         info->valid = FALSE;
-        DbgPrint(
-            "Allocation failed processing %d data bytes for command 0x%08X at "
-            "0x%08X\n",
-            data_len, raw_cmd, pull_addr);
         return 0;
       }
-      const uint8_t *accessible_addr = (const uint8_t *)(PB_ADDR(pull_addr));
-      memcpy(info->data, accessible_addr + 4, data_len);
     } else {
-      info->data = NULL;
+      info->data.data_state = PBCPDS_INVALID;
     }
   }
 
@@ -147,10 +167,11 @@ uint32_t ParsePushBufferCommandTraceInfo(uint32_t pull_addr,
 }
 
 void DeletePushBufferCommandTraceInfo(PushBufferCommandTraceInfo *info) {
-  if (!info->valid || !info->data) {
+  if (!info->valid || info->data.data_state != PBCPDS_HEAP_BUFFER) {
     return;
   }
 
-  DmFreePool(info->data);
-  info->data = NULL;
+  DmFreePool(info->data.data.heap_buffer);
+  info->data.data_state = PBCPDS_INVALID;
+  info->data.data.heap_buffer = NULL;
 }

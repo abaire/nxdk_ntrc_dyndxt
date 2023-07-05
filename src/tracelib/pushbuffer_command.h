@@ -27,6 +27,26 @@ typedef struct PushBufferCommand {
   uint32_t parameter_count;
 } __attribute((packed)) PushBufferCommand;
 
+//! Enumerates the possible states of a PushBufferCommandParameters struct.
+typedef enum PBCPDataState {
+  PBCPDS_INVALID = 0,
+  PBCPDS_SMALL_BUFFER = 1,
+  PBCPDS_HEAP_BUFFER = 2,
+} PBCPDataState;
+
+//! Holds the parameter data for a PushBufferCommand.
+typedef struct PushBufferCommandParameters {
+  //! A value from PBCPDataState indicating what data, if any, is valid in this
+  //! struct.
+  uint32_t data_state;
+  union {
+    //! Contains the parameters inline.
+    uint32_t buffer[4];
+    //! Pointer to a heap allocated buffer that contains the commands.
+    uint8_t *heap_buffer;
+  } data;
+} __attribute((packed)) PushBufferCommandParameters;
+
 //! Encapsulates information about a single PGRAPH command.
 typedef struct PushBufferCommandTraceInfo {
   //! Whether the data contained in this struct is valid or not.
@@ -48,7 +68,7 @@ typedef struct PushBufferCommandTraceInfo {
   // Parameters passed to the command, if any.
   // If populated, this will always be exactly (command.parameter_count * 4)
   // bytes.
-  uint8_t *data;
+  PushBufferCommandParameters data;
 } __attribute((packed)) PushBufferCommandTraceInfo;
 
 //! Processes the given `command` uint32_t, populating a `PushBufferCommand`
