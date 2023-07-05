@@ -1,9 +1,10 @@
 #include "tracer_state_machine.h"
 
+#include "exchange_dword.h"
+#include "kick_fifo.h"
+#include "pgraph_command_callbacks.h"
 #include "pushbuffer_command.h"
 #include "register_defs.h"
-#include "tracelib/exchange_dword.h"
-#include "tracelib/kick_fifo.h"
 #include "util/circular_buffer.h"
 #include "xbdm.h"
 #include "xbox_helper.h"
@@ -49,17 +50,22 @@ typedef struct TracerStateMachine {
   CircularBuffer graphics_buffer;
 } TracerStateMachine;
 
-// Function signature for pre/post processing callbacks.
-typedef void (*PGRAPHCommandCallback)(const PushBufferCommandTraceInfo *info);
+//! Describes a callback that may be called before/after a PGRAPH command is
+//! processed.
+typedef void (*PGRAPHCommandCallback)(const PushBufferCommandTraceInfo *info,
+                                      StoreAuxData store);
 
 typedef struct PGRAPHCommandProcessor {
+  //! Whether or not this struct is valid.
   BOOL valid;
 
-  // The command to be processed.
+  //! The method ID to be processed.
   uint32_t command;
 
-  PGRAPHCommandCallback *pre_callbacks;
-  PGRAPHCommandCallback *post_callbacks;
+  //! Optional callback to be invoked before processing the command.
+  PGRAPHCommandCallback pre_callback;
+  //! Optional callback to be invoked after processing the command.
+  PGRAPHCommandCallback post_callback;
 } PGRAPHCommandProcessor;
 
 typedef struct PGRAPHClassProcessor {
@@ -74,8 +80,6 @@ static const uint32_t kTag = 0x6E74534D;  // 'ntSM'
 // would not happen outside of tracing conditions.
 static const uint32_t kMaxQueueDepthBeforeFlush = 200;
 
-static const PGRAPHClassProcessor kPGRAPHProcessorRegistry[] = {{0, NULL}};
-
 static TracerStateMachine state_machine = {0};
 
 static DWORD __attribute__((stdcall))
@@ -89,6 +93,25 @@ static void Shutdown(void);
 static void WaitForStablePushBufferState(void);
 static void DiscardUntilFramebufferFlip(BOOL require_new_frame);
 static void TraceUntilFramebufferFlip(BOOL discard);
+
+#define HOOK_METHOD(cmd, pre_cb, post_cb) \
+  { TRUE, cmd, pre_cb, post_cb }
+
+#define HOOK_END() \
+  { FALSE, 0, NULL, NULL }
+
+static PGRAPHCommandProcessor kClass97Processors[] = {
+    HOOK_METHOD(NV097_CLEAR_SURFACE, NULL, TraceSurfaces),
+    HOOK_END(),
+};
+
+static const PGRAPHClassProcessor kPGRAPHProcessorRegistry[] = {
+    {0x97, kClass97Processors},
+    {0, NULL},
+};
+
+#undef HOOK_METHOD
+#undef HOOK_END
 
 static void *Allocator(size_t size) {
   return DmAllocatePoolWithTag(size, kTag);
@@ -571,10 +594,10 @@ static void RunFIFO(uint32_t pull_addr_target) {
 
 // Looks up any registered processors for the given PushBufferCommandTraceInfo.
 static void GetMethodProcessors(const PushBufferCommandTraceInfo *method_info,
-                                PGRAPHCommandCallback **pre_callbacks,
-                                PGRAPHCommandCallback **post_callbacks) {
-  *pre_callbacks = NULL;
-  *post_callbacks = NULL;
+                                PGRAPHCommandCallback *pre_callback,
+                                PGRAPHCommandCallback *post_callback) {
+  *pre_callback = NULL;
+  *post_callback = NULL;
   if (!method_info->valid) {
     return;
   }
@@ -592,12 +615,47 @@ static void GetMethodProcessors(const PushBufferCommandTraceInfo *method_info,
   const PGRAPHCommandProcessor *entry = class_registry->processors;
   while (entry->valid) {
     if (entry->command == method_info->command.method) {
-      *pre_callbacks = entry->pre_callbacks;
-      *post_callbacks = entry->post_callbacks;
+      *pre_callback = entry->pre_callback;
+      *post_callback = entry->post_callback;
       return;
     }
     ++entry;
   }
+}
+
+//! Write all of the given data to the given circular buffer.
+static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
+                        CRITICAL_SECTION *critical_section, CircularBuffer cb,
+                        const void *data, uint32_t len) {
+  while (len) {
+    EnterCriticalSection(critical_section);
+    uint32_t bytes_written = CBWriteAvailable(cb, data, len);
+    uint32_t bytes_available = CBAvailable(cb);
+    LeaveCriticalSection(critical_section);
+
+    len -= bytes_written;
+    notify_bytes_available(bytes_available);
+
+    if (len) {
+      VERBOSE_PRINT(("WriteBuffer: Circular buffer full, sleeping...\n"));
+      Sleep(10);
+    }
+  }
+}
+
+static void LogAuxData(const PushBufferCommandTraceInfo *trigger,
+                       AuxDataType type, const void *data, uint32_t len) {
+  if (!trigger || !data || !len) {
+    return;
+  }
+
+  AuxDataHeader header = {trigger->packet_index, type, len};
+  WriteBuffer(state_machine.on_graphics_buffer_bytes_available,
+              &state_machine.graphics_critical_section,
+              state_machine.graphics_buffer, &header, sizeof(header));
+  WriteBuffer(state_machine.on_graphics_buffer_bytes_available,
+              &state_machine.graphics_critical_section,
+              state_machine.graphics_buffer, data, len);
 }
 
 static uint32_t ProcessPushBufferCommand(
@@ -624,24 +682,22 @@ static uint32_t ProcessPushBufferCommand(
     // Calculate the size of the instruction + any associated parameters.
     unprocessed_bytes = 4 + method_info->command.parameter_count * 4;
 
-    PGRAPHCommandCallback *pre_callbacks = NULL;
-    PGRAPHCommandCallback *post_callbacks = NULL;
+    PGRAPHCommandCallback pre_callback = NULL;
+    PGRAPHCommandCallback post_callback = NULL;
     if (!skip_hooks) {
-      GetMethodProcessors(method_info, &pre_callbacks, &post_callbacks);
+      GetMethodProcessors(method_info, &pre_callback, &post_callback);
     }
 
-    if (pre_callbacks) {
+    if (pre_callback) {
       // Go where we can do pre-callback.
       RunFIFO(*dma_pull_addr);
 
-      // Do the pre callbacks before running the command
+      // Do the pre callback before running the command
       // FIXME: assert we are where we wanted to be
-      while (pre_callbacks) {
-        (*pre_callbacks)(method_info);
-      }
+      pre_callback(method_info, LogAuxData);
     }
 
-    if (post_callbacks) {
+    if (post_callback) {
       // If we reached target, we can't step again without leaving valid buffer
 
       if (*dma_pull_addr != state_machine.real_dma_push_addr) {
@@ -656,9 +712,7 @@ static uint32_t ProcessPushBufferCommand(
       // We have processed all bytes now
       unprocessed_bytes = 0;
 
-      while (post_callbacks) {
-        (*post_callbacks)(method_info);
-      }
+      post_callback(method_info, LogAuxData);
     }
     //      // Add the pushbuffer command to log
     //      self._record_push_buffer_command(method_info, pre_info, post_info)
@@ -667,26 +721,6 @@ static uint32_t ProcessPushBufferCommand(
   *dma_pull_addr = post_addr;
 
   return unprocessed_bytes;
-}
-
-//! Write all of the given data to the given circular buffer.
-static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
-                        CRITICAL_SECTION *critical_section, CircularBuffer cb,
-                        const void *data, uint32_t len) {
-  while (len) {
-    EnterCriticalSection(critical_section);
-    uint32_t bytes_written = CBWriteAvailable(cb, data, len);
-    uint32_t bytes_available = CBAvailable(cb);
-    LeaveCriticalSection(critical_section);
-
-    len -= bytes_written;
-    notify_bytes_available(bytes_available);
-
-    if (len) {
-      VERBOSE_PRINT(("WriteBuffer: Circular buffer full, sleeping...\n"));
-      Sleep(10);
-    }
-  }
 }
 
 static void LogCommand(const PushBufferCommandTraceInfo *info) {
@@ -872,7 +906,9 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
           // NOTE: EnableFIFO + ResumePusher + PausePusher + DisableFIFO is
           // insufficient to fix this problem.
           EnablePGRAPHFIFO();
-          MaybePopulateFIFOCache(10);
+          ResumeFIFOPusher();
+          SwitchToThread();
+          PauseFIFOPuller();
           DisablePGRAPHFIFO();
         }
       } else {

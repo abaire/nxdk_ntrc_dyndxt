@@ -90,6 +90,8 @@ add_library(
         src/tracelib/kick_fifo.c
         src/tracelib/kick_fifo.h
         src/tracelib/ntrc_dyndxt.h
+        src/tracelib/pgraph_command_callbacks.c
+        src/tracelib/pgraph_command_callbacks.h
         src/tracelib/pushbuffer_command.c
         src/tracelib/pushbuffer_command.h
         src/tracelib/register_defs.h
