@@ -527,8 +527,8 @@ static void RunFIFO(uint32_t pull_addr_target) {
     }
 
     VERBOSE_PRINT(
-        ("RunFIFO: At 0x%08X, target is 0x%08X (Real: 0x%08X)\n"
-         "         PULL ADDR: 0x%X  PUSH: 0x%X\n",
+        ("RunFIFO: State pull=0x%08X, target=0x%08X push=0x%08X - Live: "
+         "pull=0x%X push=0x%X\n",
          state_machine.real_dma_pull_addr, pull_addr_target,
          state_machine.real_dma_push_addr, GetDMAPullAddress(),
          GetDMAPushAddress()));
@@ -793,7 +793,7 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
     if (info.valid && info.graphics_class == 0x97) {
       is_flip = info.command.method == NV097_FLIP_STALL;
 
-      // The nxdk does not trigger a FLIP_STALL, but does do an increment.
+      // The nxdk does not trigger a FLIP_STALL, but does do a FLIP_INC_WRITE.
       // XDK-based titles do both an increment and a stall shortly after.
       // On detection of an increment, a few commands are peeked to guess
       // whether this is an nxdk title or an XDK one where the inc should not be

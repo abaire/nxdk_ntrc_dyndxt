@@ -10,6 +10,10 @@
 
 static const uint32_t kTag = 0x6E745043;  // 'ntPC'
 
+// Offset that must be added to pushbuffer commands in order to read them.
+static const uint32_t kAccessibleAddrOffset = 0x80000000;
+#define PB_ADDR(a) (kAccessibleAddrOffset | (a))
+
 uint32_t ParsePushBufferCommand(uint32_t addr, uint32_t command,
                                 PushBufferCommand *info) {
 #ifdef VERBOSE_DEBUG
@@ -94,7 +98,7 @@ uint32_t ParsePushBufferCommandTraceInfo(uint32_t pull_addr,
   info->data = NULL;
 
   // Retrieve command type from Xbox
-  uint32_t raw_cmd = ReadDWORD(0x80000000 | pull_addr);
+  uint32_t raw_cmd = ReadDWORD(PB_ADDR(pull_addr));
   // self.html_log.log(["", "", "", "@0x%08X: DATA: 0x%08X" % (pull_addr,
   // word)])
 
@@ -132,7 +136,8 @@ uint32_t ParsePushBufferCommandTraceInfo(uint32_t pull_addr,
             data_len, raw_cmd, pull_addr);
         return 0;
       }
-      memcpy(info->data, (const uint8_t *)(pull_addr + 4), data_len);
+      const uint8_t *accessible_addr = (const uint8_t *)(PB_ADDR(pull_addr));
+      memcpy(info->data, accessible_addr + 4, data_len);
     } else {
       info->data = NULL;
     }
