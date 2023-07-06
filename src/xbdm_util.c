@@ -1,9 +1,9 @@
 #include "xbdm_util.h"
 
 static inline uint32_t min(uint32_t a, uint32_t b) { return (a < b) ? a : b; }
-static HRESULT_API SendStaticBufferBinaryData(CommandContext *ctx,
-                                              char *response,
-                                              DWORD response_len);
+static HRESULT_API SendPrepopulatedBufferBinaryData(CommandContext *ctx,
+                                                    char *response,
+                                                    DWORD response_len);
 
 void InitializeSendPrepopulatedBinaryDataContexts(
     CommandContext *ctx, SendPrepopulatedBinaryDataContext *send_context,
@@ -15,13 +15,13 @@ void InitializeSendPrepopulatedBinaryDataContexts(
   ctx->buffer = buffer;
   ctx->user_data = send_context;
   ctx->buffer_size = buffer_size;
-  ctx->handler = SendStaticBufferBinaryData;
+  ctx->handler = SendPrepopulatedBufferBinaryData;
   ctx->bytes_remaining = buffer_size;
 }
 
-static HRESULT_API SendStaticBufferBinaryData(CommandContext *ctx,
-                                              char *response,
-                                              DWORD response_len) {
+static HRESULT_API SendPrepopulatedBufferBinaryData(CommandContext *ctx,
+                                                    char *response,
+                                                    DWORD response_len) {
   SendPrepopulatedBinaryDataContext *send_context =
       (SendPrepopulatedBinaryDataContext *)ctx->user_data;
 
