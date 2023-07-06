@@ -27,6 +27,10 @@
 //!           performed.
 //!   rdicap - uint32 boolean indicating whether RDI captures should be
 //!           performed (this has significant performance impact).
+//!   rawpgraph - uint32 boolean indicating whether raw PGRAPH region dumping
+//!           should be performed.
+//!   rawpfb - uint32 boolean indicating whether raw PFB region dumping should
+//!           be performed.
 HRESULT HandleAttach(const char *command, char *response, uint32_t response_len,
                      CommandContext *ctx);
 

@@ -63,20 +63,19 @@ static void OnTracerStateChanged(TracerState new_state) {
 
 static void OnRequestProcessed() { request_processed = true; }
 
+static uint8_t discard_buffer[4096];
 static void OnPGRAPHBytesAvailable(uint32_t bytes_written) {
   PrintMsg("New PGRAPH bytes available: %u", bytes_written);
   TracerLockPGRAPHBuffer();
-  std::vector<uint8_t> discard_buffer(1024);
-  while (TracerReadPGRAPHBuffer(discard_buffer.data(), discard_buffer.size())) {
+  while (TracerReadPGRAPHBuffer(discard_buffer, sizeof(discard_buffer))) {
   }
   TracerUnlockPGRAPHBuffer();
 }
 
-static void OnGraphicsBytesAvailable(uint32_t bytes_written) {
-  PrintMsg("New graphics bytes available: %u", bytes_written);
+static void OnAuxBytesAvailable(uint32_t bytes_written) {
+  PrintMsg("New aux bytes available: %u", bytes_written);
   TracerLockAuxBuffer();
-  std::vector<uint8_t> discard_buffer(1024);
-  while (TracerReadAuxBuffer(discard_buffer.data(), discard_buffer.size())) {
+  while (TracerReadAuxBuffer(discard_buffer, sizeof(discard_buffer))) {
   }
   TracerUnlockAuxBuffer();
 }
@@ -107,7 +106,7 @@ TracerThreadMain(LPVOID lpThreadParameter) {
 
   auto init_result =
       TracerInitialize(OnTracerStateChanged, OnRequestProcessed,
-                       OnPGRAPHBytesAvailable, OnGraphicsBytesAvailable);
+                       OnPGRAPHBytesAvailable, OnAuxBytesAvailable);
   if (!XBOX_SUCCESS(init_result)) {
     PrintMsg("Failed to initialize tracer: 0x%X", init_result);
     return init_result;

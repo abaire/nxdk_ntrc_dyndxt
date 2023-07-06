@@ -3,6 +3,7 @@
 
 #include <windows.h>
 
+#include "pgraph_command_callbacks.h"
 #include "tracelib/ntrc_dyndxt.h"
 
 #ifdef __cplusplus
@@ -16,17 +17,7 @@ typedef struct TracerConfig {
   // Number of bytes to reserve for color/depth buffer capture.
   uint32_t graphics_circular_buffer_size;
 
-  // Enables capture of RDI state into the graphics circular buffer.
-  BOOL rdi_capture_enabled;
-
-  // Enables capture of color surface into the graphics circular buffer.
-  BOOL surface_color_capture_enabled;
-
-  // Enables capture of depth surface into the graphics circular buffer.
-  BOOL surface_depth_capture_enabled;
-
-  // Enables capture of texture stage sources into the graphics circular buffer.
-  BOOL texture_capture_enabled;
+  AuxConfig aux_tracing_config;
 } TracerConfig;
 
 // Callback to be invoked when the tracer state changes.

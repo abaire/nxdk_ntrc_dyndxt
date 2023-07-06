@@ -166,6 +166,26 @@ uint32_t ParsePushBufferCommandTraceInfo(uint32_t pull_addr,
   return next_parser_addr;
 }
 
+BOOL GetParameter(const PushBufferCommandTraceInfo *info, uint32_t index,
+                  uint32_t *out) {
+  if (!info || !info->valid || info->data.data_state == PBCPDS_INVALID) {
+    return FALSE;
+  }
+
+  if (index >= info->command.parameter_count) {
+    DbgPrint("GetParameter: Index out of range (%u >= %u)\n", index,
+             info->command.parameter_count);
+    return FALSE;
+  }
+
+  const uint32_t *data = info->data.data_state == PBCPDS_HEAP_BUFFER
+                             ? (const uint32_t *)info->data.data.heap_buffer
+                             : info->data.data.buffer;
+  *out = data[index];
+
+  return TRUE;
+}
+
 void DeletePushBufferCommandTraceInfo(PushBufferCommandTraceInfo *info) {
   if (!info->valid || info->data.data_state != PBCPDS_HEAP_BUFFER) {
     return;

@@ -101,6 +101,13 @@ uint32_t ParsePushBufferCommandTraceInfo(uint32_t pull_addr,
                                          PushBufferCommandTraceInfo *info,
                                          BOOL discard_parameters);
 
+//! Fetches the parameter at the given index to the given command (e.g., 0 would
+//! be the first parameter). Returns FALSE on error (e.g., invalid data or an
+//! index >= the number of parameters), otherwise `out` will be updated with the
+//! parameter value.
+BOOL GetParameter(const PushBufferCommandTraceInfo *info, uint32_t index,
+                  uint32_t *out);
+
 void DeletePushBufferCommandTraceInfo(PushBufferCommandTraceInfo *info);
 
 #ifdef __cplusplus

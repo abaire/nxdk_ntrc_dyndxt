@@ -5,7 +5,7 @@
 
 #define CMD_READ_AUX "read_aux"
 
-//! Reads data from the auxilliary data buffer.
+//! Reads data from the auxiliary data buffer.
 //!
 //! The response will be a size-prefixed binary (the first 4 bytes indicate the
 //! size, followed by data).

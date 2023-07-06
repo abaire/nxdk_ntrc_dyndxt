@@ -102,7 +102,9 @@ uint32_t CBWriteAvailable(CircularBuffer handle, const void *data,
   if (free_space < max_size) {
     max_size = free_space;
   }
-  Write(cb, data, max_size);
+  if (max_size) {
+    Write(cb, data, max_size);
+  }
   return max_size;
 }
 

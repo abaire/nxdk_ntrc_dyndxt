@@ -53,7 +53,8 @@ typedef struct TracerStateMachine {
 //! Describes a callback that may be called before/after a PGRAPH command is
 //! processed.
 typedef void (*PGRAPHCommandCallback)(const PushBufferCommandTraceInfo *info,
-                                      StoreAuxData store);
+                                      StoreAuxData store,
+                                      const AuxConfig *config);
 
 typedef struct PGRAPHCommandProcessor {
   //! Whether or not this struct is valid.
@@ -102,6 +103,8 @@ static void TraceUntilFramebufferFlip(BOOL discard);
 
 static PGRAPHCommandProcessor kClass97Processors[] = {
     HOOK_METHOD(NV097_CLEAR_SURFACE, NULL, TraceSurfaces),
+    HOOK_METHOD(NV097_BACK_END_WRITE_SEMAPHORE_RELEASE, NULL, TraceSurfaces),
+    HOOK_METHOD(NV097_SET_BEGIN_END, TraceBegin, TraceEnd),
     HOOK_END(),
 };
 
@@ -145,12 +148,22 @@ HRESULT TracerInitialize(
 
 void TracerGetDefaultConfig(TracerConfig *config) {
   config->pgraph_circular_buffer_size = 1024 * 16;
-  config->graphics_circular_buffer_size = 1920 * 1080 * 4 * 2;
+  config->graphics_circular_buffer_size = 1024 * 1024 * 4;
 
-  config->rdi_capture_enabled = FALSE;
-  config->surface_color_capture_enabled = TRUE;
-  config->surface_depth_capture_enabled = FALSE;
-  config->texture_capture_enabled = TRUE;
+  config->aux_tracing_config.raw_pgraph_capture_enabled = FALSE;
+  config->aux_tracing_config.raw_pfb_capture_enabled = FALSE;
+  config->aux_tracing_config.rdi_capture_enabled = FALSE;
+  config->aux_tracing_config.surface_color_capture_enabled = TRUE;
+  config->aux_tracing_config.surface_depth_capture_enabled = FALSE;
+  config->aux_tracing_config.texture_capture_enabled = TRUE;
+}
+
+static BOOL AuxCaptureEnabled(const AuxConfig *config) {
+  return config->raw_pgraph_capture_enabled ||
+         config->raw_pfb_capture_enabled || config->rdi_capture_enabled ||
+         config->surface_color_capture_enabled ||
+         config->surface_depth_capture_enabled ||
+         config->texture_capture_enabled;
 }
 
 HRESULT TracerCreate(const TracerConfig *config) {
@@ -165,15 +178,16 @@ HRESULT TracerCreate(const TracerConfig *config) {
   state_machine.config = *config;
   state_machine.request = REQ_NONE;
 
-  if (config->rdi_capture_enabled || config->surface_color_capture_enabled ||
-      config->surface_depth_capture_enabled ||
-      config->texture_capture_enabled) {
+  if (AuxCaptureEnabled(&config->aux_tracing_config)) {
     state_machine.aux_buffer =
         CBCreateEx(config->graphics_circular_buffer_size, Allocator, Free);
     if (!state_machine.aux_buffer) {
       return XBOX_E_ACCESS_DENIED;
     }
+  } else {
+    state_machine.aux_buffer = NULL;
   }
+
   state_machine.pgraph_buffer =
       CBCreateEx(config->pgraph_circular_buffer_size, Allocator, Free);
   if (!state_machine.pgraph_buffer) {
@@ -333,7 +347,7 @@ void TracerUnlockPGRAPHBuffer(void) {
   LeaveCriticalSection(&state_machine.pgraph_critical_section);
 }
 
-//! Locks the auxilliary buffer to prevent writing, returning the bytes
+//! Locks the auxiliary buffer to prevent writing, returning the bytes
 //! available in the buffer.
 uint32_t TracerLockAuxBuffer(void) {
   EnterCriticalSection(&state_machine.aux_critical_section);
@@ -580,7 +594,7 @@ static void RunFIFO(uint32_t pull_addr_target) {
     // Get the updated PB address.
     uint32_t new_get_addr = GetDMAPullAddress();
     if (new_get_addr == state_machine.real_dma_pull_addr) {
-      iterations_with_no_change += 1;
+      ++iterations_with_no_change;
     } else {
       state_machine.real_dma_pull_addr = new_get_addr;
       iterations_with_no_change = 0;
@@ -632,12 +646,14 @@ static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
     uint32_t bytes_available = CBAvailable(cb);
     LeaveCriticalSection(critical_section);
 
-    len -= bytes_written;
-    notify_bytes_available(bytes_available);
+    if (bytes_written) {
+      len -= bytes_written;
+      notify_bytes_available(bytes_available);
 
-    if (len) {
-      VERBOSE_PRINT(("WriteBuffer: Circular buffer full, sleeping...\n"));
-      Sleep(10);
+      if (len) {
+        VERBOSE_PRINT(("WriteBuffer: Circular buffer full, sleeping...\n"));
+        Sleep(10);
+      }
     }
   }
 }
@@ -693,13 +709,14 @@ static uint32_t ProcessPushBufferCommand(
 
       // Do the pre callback before running the command
       // FIXME: assert we are where we wanted to be
-      pre_callback(method_info, LogAuxData);
+      pre_callback(method_info, LogAuxData,
+                   &state_machine.config.aux_tracing_config);
     }
 
     if (post_callback) {
       // If we reached target, we can't step again without leaving valid buffer
 
-      if (*dma_pull_addr != state_machine.real_dma_push_addr) {
+      if (*dma_pull_addr == state_machine.real_dma_push_addr) {
         DbgPrint("ERROR: Bad state in ProcessPushBufferCommand: 0x%X != 0x%X\n",
                  *dma_pull_addr, state_machine.real_dma_push_addr);
         return 0xFFFFFFFF;
@@ -711,7 +728,8 @@ static uint32_t ProcessPushBufferCommand(
       // We have processed all bytes now
       unprocessed_bytes = 0;
 
-      post_callback(method_info, LogAuxData);
+      post_callback(method_info, LogAuxData,
+                    &state_machine.config.aux_tracing_config);
     }
     //      // Add the pushbuffer command to log
     //      self._record_push_buffer_command(method_info, pre_info, post_info)
@@ -797,14 +815,13 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
   uint32_t command_index = 1;
 
   uint32_t last_push_addr = 0;
-  uint32_t sleep_millis = 5;
   uint32_t sleep_calls = 0;
 
   while (TracerGetState() == working_state) {
     PushBufferCommandTraceInfo info;
     info.packet_index = command_index++;
     uint32_t unprocessed_bytes =
-        ProcessPushBufferCommand(&dma_pull_addr, &info, discard, TRUE);
+        ProcessPushBufferCommand(&dma_pull_addr, &info, discard, discard);
     if (unprocessed_bytes == 0xFFFFFFFF) {
       SetState(STATE_FATAL_PROCESS_PUSH_BUFFER_COMMAND_FAILED);
       CompleteRequest();
@@ -898,29 +915,32 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
 
     if (is_empty) {
       if (last_push_addr == real_dma_push_addr) {
-        sleep_millis += 10;
-        if (sleep_millis > 250 && discard) {
-          sleep_millis = 5;
+        if (++sleep_calls > 10) {
+          sleep_calls = 0;
           DbgPrint("Permanent stall detected, attempting to populate FIFO\n");
-          // NOTE: EnableFIFO + ResumePusher + PausePusher + DisableFIFO is
-          // insufficient to fix this problem.
+          // NOTE: EnableFIFO + ResumePusher + SwitchToThread() + PausePusher +
+          // DisableFIFO is insufficient to fix this problem.
           EnablePGRAPHFIFO();
           ResumeFIFOPusher();
-          SwitchToThread();
-          PauseFIFOPuller();
+          ResumeFIFOPuller();
+          uint32_t yield_attempt = 0;
+          for (; yield_attempt < 10; ++yield_attempt) {
+            SwitchToThread();
+          }
+          DbgPrint("Attempted to yield %d times\n", (yield_attempt + 1));
+          PauseFIFOPusher();
           DisablePGRAPHFIFO();
         }
       } else {
         last_push_addr = real_dma_push_addr;
-        sleep_millis = 5;
+        sleep_calls = 0;
       }
-      if (!(++sleep_calls & 0x7F)) {
-        DbgPrint("Still waiting for new pgraph commands after %u iterations\n",
-                 sleep_calls);
-      }
-      DbgPrint("Reached end of buffer with %d bytes queued - sleeping %d ms\n",
-               bytes_queued, sleep_millis);
-      Sleep(sleep_millis);
+
+      VERBOSE_PRINT(
+          ("Reached end of buffer with %d bytes queued - waiting 5 ms\n",
+           bytes_queued));
+      SwitchToThread();
+      Sleep(10);
     } else {
       sleep_calls = 0;
 #ifdef VERBOSE_DEBUG

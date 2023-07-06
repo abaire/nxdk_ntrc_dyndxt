@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "command_processor_util.h"
 #include "tracelib/tracer_state_machine.h"
 #include "xbdm_util.h"
 
@@ -10,9 +11,19 @@ static uint8_t read_buffer[4096];
 
 HRESULT HandleReadPGRAPH(const char *command, char *response,
                          uint32_t response_len, CommandContext *ctx) {
+  CommandParameters cp;
+  int32_t result = CPParseCommandParameters(command, &cp);
+  if (result < 0) {
+    return CPPrintError(result, response, response_len);
+  }
+
+  uint32_t max_size = sizeof(read_buffer);
+  if (CPGetUInt32("maxsize", &max_size, &cp)) {
+    max_size = max_size > sizeof(read_buffer) ? sizeof(read_buffer) : max_size;
+  }
+
   TracerLockPGRAPHBuffer();
-  uint32_t valid_bytes =
-      TracerReadPGRAPHBuffer(read_buffer + 4, sizeof(read_buffer) - 4);
+  uint32_t valid_bytes = TracerReadPGRAPHBuffer(read_buffer + 4, max_size - 4);
   TracerUnlockPGRAPHBuffer();
   if (!valid_bytes) {
     return XBOX_E_DATA_NOT_AVAILABLE;

@@ -26,19 +26,27 @@ HRESULT HandleAttach(const char *command, char *response, uint32_t response_len,
   }
 
   if (CPGetUInt32("tcap", &val, &cp)) {
-    config.texture_capture_enabled = val != 0;
+    config.aux_tracing_config.texture_capture_enabled = val != 0;
   }
 
   if (CPGetUInt32("dcap", &val, &cp)) {
-    config.surface_depth_capture_enabled = val != 0;
+    config.aux_tracing_config.surface_depth_capture_enabled = val != 0;
   }
 
   if (CPGetUInt32("ccap", &val, &cp)) {
-    config.surface_color_capture_enabled = val != 0;
+    config.aux_tracing_config.surface_color_capture_enabled = val != 0;
   }
 
   if (CPGetUInt32("rdicap", &val, &cp)) {
-    config.rdi_capture_enabled = val != 0;
+    config.aux_tracing_config.rdi_capture_enabled = val != 0;
+  }
+
+  if (CPGetUInt32("rawpgraph", &val, &cp)) {
+    config.aux_tracing_config.raw_pgraph_capture_enabled = val != 0;
+  }
+
+  if (CPGetUInt32("rawpfb", &val, &cp)) {
+    config.aux_tracing_config.raw_pfb_capture_enabled = val != 0;
   }
 
   CPDelete(&cp);
