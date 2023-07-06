@@ -478,7 +478,7 @@ static void WaitForStablePushBufferState(void) {
     BusyWaitUntilPGRAPHIdle();
 
     // Kick the pusher so that it fills the CACHE.
-    MaybePopulateFIFOCache(0);
+    MaybePopulateFIFOCache(1);
 
     // Now drain the CACHE.
     EnablePGRAPHFIFO();
@@ -533,10 +533,6 @@ static void WaitForStablePushBufferState(void) {
   }
 
   DbgPrint("WARNING: Wait for idle aborted, restoring PFIFO state...\n");
-  SetDMAPushAddress(dma_push_addr_real);
-  EnablePGRAPHFIFO();
-  ResumeFIFOPusher();
-
   SaveDMAAddresses(dma_push_addr_real, dma_pull_addr);
 }
 
