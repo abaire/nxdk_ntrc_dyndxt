@@ -128,7 +128,7 @@ HRESULT TracerInitialize(
     NotifyBytesAvailableHandler on_pgraph_buffer_bytes_available,
     NotifyBytesAvailableHandler on_aux_buffer_bytes_available) {
   if (!on_notify_state_changed) {
-    DbgPrint("Invalid on_notify_state_changed handler.");
+    DbgPrint("ERROR: Invalid on_notify_state_changed handler.");
     return XBOX_E_FAIL;
   }
 
@@ -290,7 +290,7 @@ static BOOL SetRequest(TracerRequest new_request) {
   LeaveCriticalSection(&state_machine.state_critical_section);
 
   if (!ret) {
-    DbgPrint("Attempt to set request to %d but already %d", new_request,
+    DbgPrint("ERROR: Attempt to set request to %d but already %d", new_request,
              current);
   }
   return ret;
@@ -491,14 +491,14 @@ static void WaitForStablePushBufferState(void) {
 
     // We want the PB to be empty.
     if (dma_pull_addr_check != dma_push_addr_check) {
-      DbgPrint("Pushbuffer not empty - PULL (0x%08X) != PUSH (0x%08X)\n",
-               dma_pull_addr_check, dma_push_addr_check);
+      VERBOSE_PRINT(("Pushbuffer not empty - PULL (0x%08X) != PUSH (0x%08X)\n",
+                     dma_pull_addr_check, dma_push_addr_check));
       continue;
     }
 
     // Ensure that we are at the correct offset
     if (dma_push_addr_check != dma_push_addr_target) {
-      DbgPrint("Oops PUT was modified; got 0x%08X but expected 0x%08X!\n",
+      DbgPrint("WARNING: PUT was modified; got 0x%08X but expected 0x%08X!\n",
                dma_push_addr_check, dma_push_addr_target);
       continue;
     }
@@ -510,7 +510,7 @@ static void WaitForStablePushBufferState(void) {
     return;
   }
 
-  DbgPrint("Wait for idle aborted, restoring PFIFO state...\n");
+  DbgPrint("WARNING: Wait for idle aborted, restoring PFIFO state...\n");
   SetDMAPushAddress(dma_push_addr_real);
   EnablePGRAPHFIFO();
   ResumeFIFOPusher();
@@ -530,7 +530,7 @@ static void ExchangeDMAPushAddress(uint32_t target) {
   if (real != prev_target) {
     uint32_t push_state = ReadDWORD(CACHE_PUSH_STATE);
     if (push_state & 0x01) {
-      DbgPrint("PUT was modified and pusher was already active!\n");
+      DbgPrint("WARNING: PUT was modified and pusher was already active!\n");
       Sleep(60 * 1000);
     }
 
@@ -556,7 +556,7 @@ static void RunFIFO(uint32_t pull_addr_target) {
   while (state_machine.real_dma_pull_addr != pull_addr_target) {
     if (iterations_with_no_change && !(iterations_with_no_change % 1000)) {
       DbgPrint(
-          "Warning: %d iterations with no change to DMA_PULL_ADDR 0x%X "
+          "WARNING: %d iterations with no change to DMA_PULL_ADDR 0x%X "
           " target 0x%X\n",
           iterations_with_no_change, state_machine.real_dma_pull_addr,
           pull_addr_target);
@@ -584,7 +584,7 @@ static void RunFIFO(uint32_t pull_addr_target) {
       result = KickFIFO(pull_addr_target);
     }
     if (result != KICK_OK && result != KICK_TIMEOUT) {
-      DbgPrint("Warning: FIFO kick failed: %d\n", result);
+      DbgPrint("WARNING: FIFO kick failed: %d\n", result);
     }
 
     // Run the commands we have moved to CACHE, by enabling PGRAPH.
@@ -774,7 +774,7 @@ static BOOL PeekAheadForFlipStall(BOOL *found, uint32_t dma_pull_addr,
         ProcessPushBufferCommand(&peek_dma_pull_addr, &info, TRUE, TRUE);
 
     if (peek_unprocessed_bytes == 0xFFFFFFFF) {
-      DbgPrint("Failed to process pbuffer command during seek.\n");
+      DbgPrint("ERROR: Failed to process pbuffer command during seek.\n");
       SetState(STATE_FATAL_PROCESS_PUSH_BUFFER_COMMAND_FAILED);
       return FALSE;
     }
@@ -810,12 +810,14 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
 
   uint32_t bytes_queued = 0;
   uint32_t dma_pull_addr = state_machine.real_dma_pull_addr;
-  uint32_t commands_discarded = 0;
 
   uint32_t command_index = 1;
-
   uint32_t last_push_addr = 0;
   uint32_t sleep_calls = 0;
+
+#ifdef VERBOSE_DEBUG
+  uint32_t commands_discarded = 0;
+#endif
 
   while (TracerGetState() == working_state) {
     PushBufferCommandTraceInfo info;
@@ -833,7 +835,7 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
     {
       uint32_t real_dma_pull_addr;
       if (!TracerGetDMAAddresses(&real_dma_push_addr, &real_dma_pull_addr)) {
-        DbgPrint("DMA Addresses invalid inside trace loop!\n");
+        DbgPrint("WARNING: DMA Addresses invalid inside trace loop!\n");
         real_dma_push_addr = 0;
       }
     }
@@ -875,15 +877,15 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
     // D3D might fixup the buffer if GET is still too far away.
     if (is_empty || is_flip || bytes_queued >= kMaxQueueDepthBeforeFlush) {
       if (!is_empty) {
-        DbgPrint(
-            "Tracer: Flushing buffer until (0x%08X): real_put 0x%X; "
-            "bytes_queued: %d\n",
-            dma_pull_addr, real_dma_push_addr, bytes_queued);
+        VERBOSE_PRINT(
+            ("Tracer: Flushing buffer until (0x%08X): real_put 0x%X; "
+             "bytes_queued: %d\n",
+             dma_pull_addr, real_dma_push_addr, bytes_queued));
       } else {
-        DbgPrint(
-            "Tracer: No PGRAPH commands available. Real push: 0x%08X, live "
-            "push: 0x%08X, live pull: 0x%08X\n",
-            real_dma_push_addr, GetDMAPushAddress(), GetDMAPullAddress());
+        VERBOSE_PRINT(
+            ("Tracer: No PGRAPH commands available. Real push: 0x%08X, live "
+             "push: 0x%08X, live pull: 0x%08X\n",
+             real_dma_push_addr, GetDMAPushAddress(), GetDMAPullAddress()));
       }
 
       RunFIFO(dma_pull_addr);
@@ -940,7 +942,6 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
           ("Reached end of buffer with %d bytes queued - waiting 5 ms\n",
            bytes_queued));
       SwitchToThread();
-      Sleep(10);
     } else {
       sleep_calls = 0;
 #ifdef VERBOSE_DEBUG
