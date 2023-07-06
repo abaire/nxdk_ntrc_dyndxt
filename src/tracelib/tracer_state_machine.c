@@ -17,6 +17,28 @@
 #define VERBOSE_PRINT(c)
 #endif
 
+#define ENABLE_PROFILING
+
+#ifdef ENABLE_PROFILING
+#include "util/profiler.h"
+
+#define PROFILE_INIT() PROFILETOKEN __now
+#define PROFILE_START() __now = ProfileStart()
+#define PROFILE_SEND(msg)                                       \
+  do {                                                          \
+    double __elapsed = ProfileStop(&__now);                     \
+    uint32_t __milliseconds = (uint32_t)__elapsed;              \
+    uint32_t __fractional_milliseconds =                        \
+        (uint32_t)((__elapsed - __milliseconds) * 1000.0);      \
+    DbgPrint("PROFILE>> %s: %u.%u ms\n", (msg), __milliseconds, \
+             __fractional_milliseconds);                        \
+  } while (0)
+#else
+#define PROFILE_INIT()
+#define PROFILE_START()
+#define PROFILE_SEND(msg)
+#endif
+
 typedef enum TracerRequest {
   REQ_NONE,
   REQ_WAIT_FOR_STABLE_PUSH_BUFFER,
@@ -547,6 +569,8 @@ static void RunFIFO(uint32_t pull_addr_target) {
   // FIXME: we can avoid this read in some cases, as we should know where we are
   state_machine.real_dma_pull_addr = GetDMAPullAddress();
 
+  PROFILE_INIT();
+
   // Loop while this command is being run.
   // This is necessary because a whole command might not fit into CACHE.
   // So we have to process it chunk by chunk.
@@ -571,25 +595,31 @@ static void RunFIFO(uint32_t pull_addr_target) {
 
     // Disable PGRAPH, so it can't run anything from CACHE.
     DisablePGRAPHFIFO();
+    PROFILE_START();
     BusyWaitUntilPGRAPHIdle();
+    PROFILE_SEND("RunFIFO - BusyWaitUntilPGRAPHIdle");
 
     // This scope should be atomic.
     // FIXME: Avoid running bad code if PUT was modified during this command.
     ExchangeDMAPushAddress(pull_addr_target);
 
+    PROFILE_START();
     // FIXME: xemu does not seem to implement the CACHE behavior
     // This leads to an infinite loop as the kick fails to populate the cache.
     KickResult result = KickFIFO(pull_addr_target);
     for (int32_t i = 0; result == KICK_TIMEOUT && i < 64; ++i) {
       result = KickFIFO(pull_addr_target);
     }
+    PROFILE_SEND("RunFIFO - KickFIFO loop");
     if (result != KICK_OK && result != KICK_TIMEOUT) {
       DbgPrint("WARNING: FIFO kick failed: %d\n", result);
     }
 
     // Run the commands we have moved to CACHE, by enabling PGRAPH.
     EnablePGRAPHFIFO();
-    Sleep(10);
+
+    // TODO: Verify that a simple yield is sufficient. This used to sleep 10ms.
+    SwitchToThread();
 
     // Get the updated PB address.
     uint32_t new_get_addr = GetDMAPullAddress();
@@ -703,14 +733,20 @@ static uint32_t ProcessPushBufferCommand(
       GetMethodProcessors(method_info, &pre_callback, &post_callback);
     }
 
+    PROFILE_INIT();
+
     if (pre_callback) {
+      PROFILE_START();
       // Go where we can do pre-callback.
       RunFIFO(*dma_pull_addr);
+      PROFILE_SEND("PreCallback - RunFIFO");
 
       // Do the pre callback before running the command
       // FIXME: assert we are where we wanted to be
+      PROFILE_START();
       pre_callback(method_info, LogAuxData,
                    &state_machine.config.aux_tracing_config);
+      PROFILE_SEND("PreCallback invocation:");
     }
 
     if (post_callback) {
@@ -723,13 +759,17 @@ static uint32_t ProcessPushBufferCommand(
       }
 
       // Go where we want to go (equivalent to step)
+      PROFILE_START();
       RunFIFO(post_addr);
+      PROFILE_SEND("PostCallback - RunFIFO");
 
       // We have processed all bytes now
       unprocessed_bytes = 0;
 
+      PROFILE_START();
       post_callback(method_info, LogAuxData,
                     &state_machine.config.aux_tracing_config);
+      PROFILE_SEND("PostCallback invocation");
     }
     //      // Add the pushbuffer command to log
     //      self._record_push_buffer_command(method_info, pre_info, post_info)
@@ -814,16 +854,23 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
   uint32_t command_index = 1;
   uint32_t last_push_addr = 0;
   uint32_t sleep_calls = 0;
+  uint32_t stall_workarounds = 0;
 
 #ifdef VERBOSE_DEBUG
   uint32_t commands_discarded = 0;
 #endif
 
+  PROFILE_INIT();
+
   while (TracerGetState() == working_state) {
     PushBufferCommandTraceInfo info;
     info.packet_index = command_index++;
+
+    PROFILE_START();
     uint32_t unprocessed_bytes =
         ProcessPushBufferCommand(&dma_pull_addr, &info, discard, discard);
+    PROFILE_SEND("ProcessPushBufferCommand");
+
     if (unprocessed_bytes == 0xFFFFFFFF) {
       SetState(STATE_FATAL_PROCESS_PUSH_BUFFER_COMMAND_FAILED);
       CompleteRequest();
@@ -888,7 +935,9 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
              real_dma_push_addr, GetDMAPushAddress(), GetDMAPullAddress()));
       }
 
+      PROFILE_START();
       RunFIFO(dma_pull_addr);
+      PROFILE_SEND("Flush buffer - RunFIFO");
       bytes_queued = 0;
     }
 
@@ -919,19 +968,27 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
       if (last_push_addr == real_dma_push_addr) {
         if (++sleep_calls > 10) {
           sleep_calls = 0;
-          DbgPrint("Permanent stall detected, attempting to populate FIFO\n");
+          if (++stall_workarounds > 2) {
+            DbgPrint("Permanent stall detected, aborting...\n");
+            SetState(STATE_FATAL_PERMANENT_STALL);
+            CompleteRequest();
+            return;
+          }
+          DbgPrint("Stall detected, attempting to populate FIFO\n");
+          PROFILE_START();
           // NOTE: EnableFIFO + ResumePusher + SwitchToThread() + PausePusher +
           // DisableFIFO is insufficient to fix this problem.
           EnablePGRAPHFIFO();
           ResumeFIFOPusher();
           ResumeFIFOPuller();
           uint32_t yield_attempt = 0;
-          for (; yield_attempt < 10; ++yield_attempt) {
+          for (; yield_attempt < 50; ++yield_attempt) {
             SwitchToThread();
           }
           DbgPrint("Attempted to yield %d times\n", (yield_attempt + 1));
           PauseFIFOPusher();
           DisablePGRAPHFIFO();
+          PROFILE_SEND("Stall workaround");
         }
       } else {
         last_push_addr = real_dma_push_addr;

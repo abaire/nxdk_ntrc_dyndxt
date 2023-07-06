@@ -85,6 +85,8 @@ add_library(
         src/util/circular_buffer.c
         src/util/circular_buffer.h
         src/util/circular_buffer_impl.h
+        src/util/profiler.c
+        src/util/profiler.h
         src/tracelib/exchange_dword.c
         src/tracelib/exchange_dword.h
         src/tracelib/kick_fifo.c
