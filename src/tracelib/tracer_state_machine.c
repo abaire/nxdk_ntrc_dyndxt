@@ -565,8 +565,6 @@ static void RunFIFO(uint32_t pull_addr_target) {
   // FIXME: we can avoid this read in some cases, as we should know where we are
   state_machine.real_dma_pull_addr = GetDMAPullAddress();
 
-  PROFILE_INIT();
-
   // Loop while this command is being run.
   // This is necessary because a whole command might not fit into CACHE.
   // So we have to process it chunk by chunk.
@@ -591,24 +589,23 @@ static void RunFIFO(uint32_t pull_addr_target) {
 
     // Disable PGRAPH, so it can't run anything from CACHE.
     DisablePGRAPHFIFO();
-    PROFILE_START();
     BusyWaitUntilPGRAPHIdle();
-    PROFILE_SEND("RunFIFO - BusyWaitUntilPGRAPHIdle");
 
     // This scope should be atomic.
     // FIXME: Avoid running bad code if PUT was modified during this command.
     ExchangeDMAPushAddress(pull_addr_target);
 
-    PROFILE_START();
     // FIXME: xemu does not seem to implement the CACHE behavior
     // This leads to an infinite loop as the kick fails to populate the cache.
     KickResult result = KickFIFO(pull_addr_target);
-    for (int32_t i = 0; result == KICK_TIMEOUT && i < 64; ++i) {
+    int32_t i = 0;
+    for (; result == KICK_TIMEOUT && i < 4; ++i) {
       result = KickFIFO(pull_addr_target);
     }
-    PROFILE_SEND("RunFIFO - KickFIFO loop");
     if (result != KICK_OK && result != KICK_TIMEOUT) {
       DbgPrint("WARNING: FIFO kick failed: %d\n", result);
+    } else if (result == KICK_TIMEOUT) {
+      DbgPrint("WARNING: FIFO kick timed out\n");
     }
 
     // Run the commands we have moved to CACHE, by enabling PGRAPH.
@@ -666,6 +663,8 @@ static void GetMethodProcessors(const PushBufferCommandTraceInfo *method_info,
 static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
                         CRITICAL_SECTION *critical_section, CircularBuffer cb,
                         const void *data, uint32_t len) {
+  PROFILE_INIT();
+  PROFILE_START();
   while (len) {
     EnterCriticalSection(critical_section);
     uint32_t bytes_written = CBWriteAvailable(cb, data, len);
@@ -675,13 +674,13 @@ static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
     if (bytes_written) {
       len -= bytes_written;
       notify_bytes_available(bytes_available);
-
-      if (len) {
-        VERBOSE_PRINT(("WriteBuffer: Circular buffer full, sleeping...\n"));
-        Sleep(10);
-      }
+    }
+    if (len) {
+      VERBOSE_PRINT(("WriteBuffer: Circular buffer full, sleeping...\n"));
+      SwitchToThread();
     }
   }
+  PROFILE_SEND("WriteBuffer");
 }
 
 static void LogAuxData(const PushBufferCommandTraceInfo *trigger,
