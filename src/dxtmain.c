@@ -88,6 +88,6 @@ static void OnPGRAPHBufferBytesAvailable(uint32_t new_bytes) {
 
 static void OnAuxBufferBytesAvailable(uint32_t new_bytes) {
   char buf[128];
-  snprintf(buf, sizeof(buf), "%s!w_graphics=0x%X", kHandlerName, new_bytes);
+  snprintf(buf, sizeof(buf), "%s!w_aux=0x%X", kHandlerName, new_bytes);
   DmSendNotificationString(buf);
 }
