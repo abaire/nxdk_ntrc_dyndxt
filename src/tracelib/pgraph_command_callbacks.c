@@ -9,12 +9,34 @@
 #include "xbox_helper.h"
 #include "xemu/hw/xbox/nv2a/nv2a_regs.h"
 
-#define VERBOSE_DEBUG
+// #define VERBOSE_DEBUG
 
 #ifdef VERBOSE_DEBUG
 #define VERBOSE_PRINT(c) DbgPrint c
 #else
 #define VERBOSE_PRINT(c)
+#endif
+
+// #define ENABLE_PROFILING
+
+#ifdef ENABLE_PROFILING
+#include "util/profiler.h"
+
+#define PROFILE_INIT() PROFILETOKEN __now
+#define PROFILE_START() __now = ProfileStart()
+#define PROFILE_SEND(msg)                                       \
+  do {                                                          \
+    double __elapsed = ProfileStop(&__now);                     \
+    uint32_t __milliseconds = (uint32_t)__elapsed;              \
+    uint32_t __fractional_milliseconds =                        \
+        (uint32_t)((__elapsed - __milliseconds) * 1000.0);      \
+    DbgPrint("PROFILE>> %s: %u.%u ms\n", (msg), __milliseconds, \
+             __fractional_milliseconds);                        \
+  } while (0)
+#else
+#define PROFILE_INIT()
+#define PROFILE_START()
+#define PROFILE_SEND(msg)
 #endif
 
 static const uint32_t kTag = 0x6E744343;  // 'ntCC'
@@ -23,6 +45,7 @@ static const uint32_t kTag = 0x6E744343;  // 'ntCC'
 //! ADDR_AGPMEM, which is guaranteed to be linear (and thus may be slower than
 //! tiled ADDR_FBMEM but can be manipulated directly).
 static const uint32_t kAGPMemoryBase = 0xF0000000;
+#define AGP_ADDR(a) (const uint8_t *)(kAGPMemoryBase | (a))
 
 typedef struct TextureParameters {
   uint32_t width;
@@ -236,9 +259,17 @@ static void StoreSurface(const PushBufferCommandTraceInfo *info,
   memcpy(write_ptr, description, description_len);  // NOLINT
   write_ptr += description_len;
 
-  memcpy(write_ptr, (const uint8_t *)(kAGPMemoryBase | surface_offset), len);
+  // TODO: Only fall back on AGP access if the surface format is complicated.
+  // AGP reads are slow; a 640x480x4 buffer takes around 13 seconds (tested on
+  // a 1.0 devkit w/ a debug build).
+  PROFILE_INIT();
+  PROFILE_START();
+  memcpy(write_ptr, AGP_ADDR(surface_offset), len);
+  PROFILE_SEND("StoreSurface - AGP memcpy");
 
+  PROFILE_START();
   store(info, ADT_SURFACE, buffer, buffer_size);
+  PROFILE_SEND("StoreSurface - store");
   DmFreePool(buffer);
 }
 
@@ -257,8 +288,11 @@ void TraceSurfaces(const PushBufferCommandTraceInfo *info, StoreAuxData store,
     return;
   }
 
+  PROFILE_INIT();
+  PROFILE_START();
   TextureParameters params;
   ReadTextureParameters(&params);
+  PROFILE_SEND("TraceSurfaces - ReadTextureParameters");
 
   if (!params.format_color) {
     DbgPrint("Warning: Invalid color format, skipping surface dump.");
@@ -273,8 +307,10 @@ void TraceSurfaces(const PushBufferCommandTraceInfo *info, StoreAuxData store,
              params.width, params.height, params.color_pitch,
              params.color_pitch, params.color_offset, params.format_color,
              params.surface_type, params.swizzled ? "Y" : "N");
+    PROFILE_START();
     StoreSurface(info, store, ST_COLOR, params.color_offset, params.width,
                  params.height, params.color_pitch, description);
+    PROFILE_SEND("TraceSurfaces - Store color surface");
   }
   if (config->surface_depth_capture_enabled && params.depth_offset) {
     char description[256];
@@ -284,19 +320,27 @@ void TraceSurfaces(const PushBufferCommandTraceInfo *info, StoreAuxData store,
              params.width, params.height, params.depth_pitch,
              params.depth_pitch, params.depth_offset, params.format_depth,
              params.surface_type, params.swizzled ? "Y" : "N");
+    PROFILE_START();
     StoreSurface(info, store, ST_DEPTH, params.depth_offset, params.width,
                  params.height, params.depth_pitch, description);
+    PROFILE_SEND("TraceSurfaces - Store depth surface");
   }
 
   if (config->rdi_capture_enabled) {
     // Vertex shader instructions.
+    PROFILE_START();
     StoreRDI(info, store, 0x100000, 136 * 4);
+    PROFILE_SEND("TraceSurfaces - StoreRDI - shader");
 
     // Vertex shader constants 0 (192 four-element vectors).
+    PROFILE_START();
     StoreRDI(info, store, 0x170000, 192 * 4);
+    PROFILE_SEND("TraceSurfaces - StoreRDI - c0");
 
     // Vertex shader constants 1 (192 four-element vectors).
+    PROFILE_START();
     StoreRDI(info, store, 0xCC0000, 192 * 4);
+    PROFILE_SEND("TraceSurfaces - StoreRDI - c1");
   }
 }
 
@@ -337,7 +381,7 @@ static void StoreTextureLayer(const PushBufferCommandTraceInfo *info,
   header->control1 = control1;
 
   uint8_t *write_ptr = buffer + sizeof(*header);
-  memcpy(write_ptr, (const uint8_t *)(kAGPMemoryBase | adjusted_offset), len);
+  memcpy(write_ptr, AGP_ADDR(adjusted_offset), len);
 
   store(info, ADT_TEXTURE, buffer, buffer_size);
   DmFreePool(buffer);
