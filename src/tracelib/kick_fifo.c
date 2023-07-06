@@ -3,7 +3,7 @@
 #include "register_defs.h"
 #include "xbox_helper.h"
 
-#define BUSY_LOOP_CYCLES 0x2000
+#define LOOP_CYCLES 10
 
 KickResult KickFIFO(uint32_t expected_push) {
   KickResult ret = KICK_BAD_READ_PUSH_ADDR;
@@ -20,22 +20,20 @@ KickResult KickFIFO(uint32_t expected_push) {
   uint32_t i = 0;
   ResumeFIFOPusher();
 
-  // Do a short busy loop. Ideally this would wait forever until the push buffer
-  // becomes empty, but it is assumed that the caller may want to provide some
-  // timeout mechanism.
-  for (; i < BUSY_LOOP_CYCLES; ++i) {
+  for (; i < LOOP_CYCLES; ++i) {
     uint32_t state = ReadDWORD(CACHE_PUSH_STATE);
-    if (!(state & NV_PFIFO_CACHE1_DMA_PUSH_BUFFER)) {
+    if (state & NV_PFIFO_CACHE1_DMA_PUSH_BUFFER) {
       ret = KICK_OK;
       break;
     }
-  }
-
-  if (i >= BUSY_LOOP_CYCLES) {
-    ret = KICK_TIMEOUT;
+    SwitchToThread();
   }
 
   PauseFIFOPusher();
+
+  if (i >= LOOP_CYCLES) {
+    ret = KICK_TIMEOUT;
+  }
 
   if (expected_push != GetDMAPushAddress()) {
     ret = KICK_PUSH_MODIFIED_IN_CALL;
