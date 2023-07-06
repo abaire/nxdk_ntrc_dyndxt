@@ -1,7 +1,5 @@
 #include "xbdm_util.h"
 
-#include <string.h>
-
 static inline uint32_t min(uint32_t a, uint32_t b) { return (a < b) ? a : b; }
 static HRESULT_API SendStaticBufferBinaryData(CommandContext *ctx,
                                               char *response,
@@ -35,8 +33,7 @@ static HRESULT_API SendStaticBufferBinaryData(CommandContext *ctx,
     return XBOX_S_NO_MORE_DATA;
   }
 
-  memcpy(ctx->buffer, send_context->buffer + send_context->read_offset,
-         bytes_to_send);
+  ctx->buffer = send_context->buffer + send_context->read_offset;
   ctx->data_size = bytes_to_send;
   send_context->read_offset += bytes_to_send;
   ctx->bytes_remaining -= bytes_to_send;
