@@ -46,10 +46,25 @@ static void OnRequestProcessed(void);
 static void OnPGRAPHBufferBytesAvailable(uint32_t new_bytes);
 static void OnAuxBufferBytesAvailable(uint32_t new_bytes);
 
+//! CreateThread is not stdcall and crashes when returning to XBDM.
+HANDLE_API CreateThreadTrampoline(LPSECURITY_ATTRIBUTES lpThreadAttributes,
+                                  SIZE_T dwStackSize,
+                                  LPTHREAD_START_ROUTINE lpStartAddress,
+                                  LPVOID lpParameter, DWORD dwCreationFlags,
+                                  LPDWORD lpThreadId) {
+  HANDLE ret = CreateThread(lpThreadAttributes, dwStackSize, lpStartAddress,
+                            lpParameter, dwCreationFlags, lpThreadId);
+
+  SetThreadPriority(ret, 1);
+
+  return ret;
+}
+
 HRESULT DXTMain(void) {
   TracerInitialize(OnTracerStateChanged, OnRequestProcessed,
                    OnPGRAPHBufferBytesAvailable, OnAuxBufferBytesAvailable);
-  return DmRegisterCommandProcessor(kHandlerName, ProcessCommand);
+  return DmRegisterCommandProcessorEx(kHandlerName, ProcessCommand,
+                                      CreateThreadTrampoline);
 }
 
 static HRESULT_API ProcessCommand(const char *command, char *response,
