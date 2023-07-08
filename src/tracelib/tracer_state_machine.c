@@ -17,7 +17,7 @@
 #define VERBOSE_PRINT(c)
 #endif
 
-#define ENABLE_PROFILING
+// #define ENABLE_PROFILING
 
 #ifdef ENABLE_PROFILING
 #include "util/profiler.h"
