@@ -9,7 +9,7 @@
 #include "xbdm.h"
 #include "xbox_helper.h"
 
-#define VERBOSE_DEBUG
+// #define VERBOSE_DEBUG
 
 #ifdef VERBOSE_DEBUG
 #define VERBOSE_PRINT(c) DbgPrint c

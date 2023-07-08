@@ -6,7 +6,7 @@
 #include "xbdm.h"
 #include "xbox_helper.h"
 
-#define VERBOSE_DEBUG
+// #define VERBOSE_DEBUG
 
 static const uint32_t kTag = 0x6E745043;  // 'ntPC'
 
