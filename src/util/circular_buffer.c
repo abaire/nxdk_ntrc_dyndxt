@@ -50,11 +50,19 @@ void CBDestroy(CircularBuffer handle) {
 
 uint32_t CBCapacity(CircularBuffer handle) {
   CircularBufferImpl *cb = (CircularBufferImpl *)handle;
+  if (!cb) {
+    return 0;
+  }
+
   return cb->size - 1;
 }
 
 uint32_t CBAvailable(CircularBuffer handle) {
   CircularBufferImpl *cb = (CircularBufferImpl *)handle;
+  if (!cb) {
+    return 0;
+  }
+
   if (cb->write >= cb->read) {
     return cb->write - cb->read;
   }
@@ -63,6 +71,10 @@ uint32_t CBAvailable(CircularBuffer handle) {
 
 uint32_t CBFreeSpace(CircularBuffer handle) {
   CircularBufferImpl *cb = (CircularBufferImpl *)handle;
+  if (!cb) {
+    return 0;
+  }
+
   if (cb->read > cb->write) {
     return (cb->read - 1) - cb->write;
   }
@@ -72,6 +84,10 @@ uint32_t CBFreeSpace(CircularBuffer handle) {
 
 uint32_t CBDiscard(CircularBuffer handle, uint32_t bytes) {
   CircularBufferImpl *cb = (CircularBufferImpl *)handle;
+  if (!cb) {
+    return 0;
+  }
+
   uint32_t available = CBAvailable(handle);
   if (available < bytes) {
     bytes = available;
@@ -83,7 +99,9 @@ uint32_t CBDiscard(CircularBuffer handle, uint32_t bytes) {
 
 void CBClear(CircularBuffer handle) {
   CircularBufferImpl *cb = (CircularBufferImpl *)handle;
-  cb->read = cb->write;
+  if (cb) {
+    cb->read = cb->write;
+  }
 }
 
 bool CBWrite(CircularBuffer handle, const void *data, uint32_t data_size) {
@@ -98,6 +116,9 @@ bool CBWrite(CircularBuffer handle, const void *data, uint32_t data_size) {
 uint32_t CBWriteAvailable(CircularBuffer handle, const void *data,
                           uint32_t max_size) {
   CircularBufferImpl *cb = (CircularBufferImpl *)handle;
+  if (!max_size || !cb) {
+    return 0;
+  }
   uint32_t free_space = CBFreeSpace(handle);
   if (free_space < max_size) {
     max_size = free_space;
@@ -111,6 +132,9 @@ uint32_t CBWriteAvailable(CircularBuffer handle, const void *data,
 uint32_t CBReadAvailable(CircularBuffer handle, void *buffer,
                          uint32_t max_size) {
   CircularBufferImpl *cb = (CircularBufferImpl *)handle;
+  if (!max_size || !cb) {
+    return 0;
+  }
   uint32_t available = CBAvailable(handle);
   if (available < max_size) {
     max_size = available;
@@ -120,7 +144,7 @@ uint32_t CBReadAvailable(CircularBuffer handle, void *buffer,
 }
 
 bool CBRead(CircularBuffer handle, void *buffer, uint32_t size) {
-  if (CBAvailable(handle) < size) {
+  if (!size || CBAvailable(handle) < size) {
     return false;
   }
   Read((CircularBufferImpl *)handle, buffer, size);
