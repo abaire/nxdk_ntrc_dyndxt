@@ -39,6 +39,14 @@
 #define PROFILE_SEND(msg)
 #endif
 
+#define DEFAULT_PGRAPH_BUFFER_SIZE (1024 * 64)
+#define MIN_PGRAPH_BUFFER_SIZE (256)
+//! The percentage of the PGRAPH circular buffer that must be filled before a
+//! notification is sent.
+#define PGRAPH_NOTIFY_PERCENT 0.8f
+#define DEFAULT_AUX_BUFFER_SIZE (1024 * 1024 * 4)
+#define MIN_AUX_BUFFER_SIZE (1024 * 512)
+
 typedef enum TracerRequest {
   REQ_NONE,
   REQ_WAIT_FOR_STABLE_PUSH_BUFFER,
@@ -68,6 +76,10 @@ typedef struct TracerStateMachine {
   TracerConfig config;
   CRITICAL_SECTION pgraph_critical_section;
   CircularBuffer pgraph_buffer;
+  // The number of bytes that must be written to the pgraph_buffer before a
+  // notification is sent. This is used to reduce chatter as pgraph entries are
+  // very small and frequent.
+  uint32_t pgraph_buffer_notify_threshold;
   CRITICAL_SECTION aux_critical_section;
   CircularBuffer aux_buffer;
 } TracerStateMachine;
@@ -167,10 +179,9 @@ HRESULT TracerInitialize(
 
   return XBOX_S_OK;
 }
-
 void TracerGetDefaultConfig(TracerConfig *config) {
-  config->pgraph_circular_buffer_size = 1024 * 16;
-  config->graphics_circular_buffer_size = 1024 * 1024 * 4;
+  config->pgraph_circular_buffer_size = DEFAULT_PGRAPH_BUFFER_SIZE;
+  config->aux_circular_buffer_size = DEFAULT_AUX_BUFFER_SIZE;
 
   config->aux_tracing_config.raw_pgraph_capture_enabled = FALSE;
   config->aux_tracing_config.raw_pfb_capture_enabled = FALSE;
@@ -201,8 +212,11 @@ HRESULT TracerCreate(const TracerConfig *config) {
   state_machine.request = REQ_NONE;
 
   if (AuxCaptureEnabled(&config->aux_tracing_config)) {
-    state_machine.aux_buffer =
-        CBCreateEx(config->graphics_circular_buffer_size, Allocator, Free);
+    uint32_t buffer_size = config->aux_circular_buffer_size;
+    if (buffer_size < MIN_AUX_BUFFER_SIZE) {
+      buffer_size = MIN_AUX_BUFFER_SIZE;
+    }
+    state_machine.aux_buffer = CBCreateEx(buffer_size, Allocator, Free);
     if (!state_machine.aux_buffer) {
       return XBOX_E_ACCESS_DENIED;
     }
@@ -210,12 +224,17 @@ HRESULT TracerCreate(const TracerConfig *config) {
     state_machine.aux_buffer = NULL;
   }
 
-  state_machine.pgraph_buffer =
-      CBCreateEx(config->pgraph_circular_buffer_size, Allocator, Free);
+  uint32_t buffer_size = config->pgraph_circular_buffer_size;
+  if (buffer_size < MIN_PGRAPH_BUFFER_SIZE) {
+    buffer_size = MIN_PGRAPH_BUFFER_SIZE;
+  }
+  state_machine.pgraph_buffer = CBCreateEx(buffer_size, Allocator, Free);
   if (!state_machine.pgraph_buffer) {
     CBDestroy(state_machine.aux_buffer);
     return XBOX_E_ACCESS_DENIED;
   }
+  state_machine.pgraph_buffer_notify_threshold =
+      (uint32_t)((float)buffer_size * PGRAPH_NOTIFY_PERCENT);
 
   state_machine.processor_thread = CreateThread(
       NULL, 0, TracerThreadMain, NULL, 0, &state_machine.processor_thread_id);
@@ -422,10 +441,20 @@ TracerThreadMain(LPVOID lpThreadParameter) {
         NotifyRequestProcessed();
         break;
 
-      case REQ_TRACE_UNTIL_FLIP:
+      case REQ_TRACE_UNTIL_FLIP: {
         TraceUntilFramebufferFlip(false);
+
+        uint32_t bytes_available = CBAvailable(state_machine.pgraph_buffer);
+        if (bytes_available) {
+          state_machine.on_pgraph_buffer_bytes_available(bytes_available);
+        }
+
+        bytes_available = CBAvailable(state_machine.aux_buffer);
+        if (bytes_available) {
+          state_machine.on_aux_buffer_bytes_available(bytes_available);
+        }
         NotifyRequestProcessed();
-        break;
+      } break;
 
       case REQ_NONE:
         break;
@@ -662,7 +691,8 @@ static void GetMethodProcessors(const PushBufferCommandTraceInfo *method_info,
 //! Write all of the given data to the given circular buffer.
 static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
                         CRITICAL_SECTION *critical_section, CircularBuffer cb,
-                        const void *data, uint32_t len) {
+                        const void *data, uint32_t len,
+                        uint32_t notify_threshold) {
   PROFILE_INIT();
   PROFILE_START();
   while (len) {
@@ -673,7 +703,9 @@ static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
 
     if (bytes_written) {
       len -= bytes_written;
-      notify_bytes_available(bytes_available);
+      if (bytes_available >= notify_threshold) {
+        notify_bytes_available(bytes_available);
+      }
     }
     if (len) {
       VERBOSE_PRINT(("WriteBuffer: Circular buffer full, sleeping...\n"));
@@ -692,10 +724,10 @@ static void LogAuxData(const PushBufferCommandTraceInfo *trigger,
   AuxDataHeader header = {trigger->packet_index, type, len};
   WriteBuffer(state_machine.on_aux_buffer_bytes_available,
               &state_machine.aux_critical_section, state_machine.aux_buffer,
-              &header, sizeof(header));
+              &header, sizeof(header), 0);
   WriteBuffer(state_machine.on_aux_buffer_bytes_available,
               &state_machine.aux_critical_section, state_machine.aux_buffer,
-              data, len);
+              data, len, 0);
 }
 
 static uint32_t ProcessPushBufferCommand(
@@ -781,13 +813,15 @@ static void LogCommand(const PushBufferCommandTraceInfo *info) {
   }
   WriteBuffer(state_machine.on_pgraph_buffer_bytes_available,
               &state_machine.pgraph_critical_section,
-              state_machine.pgraph_buffer, info, sizeof(*info));
+              state_machine.pgraph_buffer, info, sizeof(*info),
+              state_machine.pgraph_buffer_notify_threshold);
   if (info->data.data_state == PBCPDS_HEAP_BUFFER &&
       info->command.parameter_count) {
     uint32_t data_size = info->command.parameter_count * 4;
     WriteBuffer(state_machine.on_pgraph_buffer_bytes_available,
                 &state_machine.pgraph_critical_section,
-                state_machine.pgraph_buffer, info->data.data.buffer, data_size);
+                state_machine.pgraph_buffer, info->data.data.buffer, data_size,
+                state_machine.pgraph_buffer_notify_threshold);
   }
 }
 

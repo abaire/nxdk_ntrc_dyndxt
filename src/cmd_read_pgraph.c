@@ -7,7 +7,7 @@
 #include "xbdm_util.h"
 
 static SendPrepopulatedBinaryDataContext send_context;
-static uint8_t read_buffer[4096];
+static uint8_t read_buffer[1024 * 64];
 
 HRESULT HandleReadPGRAPH(const char *command, char *response,
                          uint32_t response_len, CommandContext *ctx) {

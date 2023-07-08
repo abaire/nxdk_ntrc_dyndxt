@@ -22,7 +22,7 @@ HRESULT HandleAttach(const char *command, char *response, uint32_t response_len,
   }
 
   if (CPGetUInt32("gsize", &val, &cp)) {
-    config.graphics_circular_buffer_size = val;
+    config.aux_circular_buffer_size = val;
   }
 
   if (CPGetUInt32("tcap", &val, &cp)) {

@@ -14,8 +14,8 @@ typedef struct TracerConfig {
   // Number of bytes to reserve for pgraph command capture.
   uint32_t pgraph_circular_buffer_size;
 
-  // Number of bytes to reserve for color/depth buffer capture.
-  uint32_t graphics_circular_buffer_size;
+  // Number of bytes to reserve for color/depth buffer/etc... capture.
+  uint32_t aux_circular_buffer_size;
 
   AuxConfig aux_tracing_config;
 } TracerConfig;
