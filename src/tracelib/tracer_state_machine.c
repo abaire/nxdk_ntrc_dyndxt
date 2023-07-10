@@ -997,7 +997,7 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
       if (last_push_addr == real_dma_push_addr) {
         if (++sleep_calls > 10) {
           sleep_calls = 0;
-          if (++stall_workarounds > 2) {
+          if (++stall_workarounds > 10) {
             DbgPrint("Permanent stall detected, aborting...\n");
             SetState(STATE_FATAL_PERMANENT_STALL);
             CompleteRequest();
@@ -1010,11 +1010,7 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
           EnablePGRAPHFIFO();
           ResumeFIFOPusher();
           ResumeFIFOPuller();
-          uint32_t yield_attempt = 0;
-          for (; yield_attempt < 50; ++yield_attempt) {
-            SwitchToThread();
-          }
-          DbgPrint("Attempted to yield %d times\n", (yield_attempt + 1));
+          Sleep(50);
           PauseFIFOPusher();
           DisablePGRAPHFIFO();
           PROFILE_SEND("Stall workaround");
