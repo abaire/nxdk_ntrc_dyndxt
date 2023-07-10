@@ -12,6 +12,8 @@
 #include "tracelib/tracer_state_machine.h"
 #include "xbdm.h"
 
+#define ENABLE_TRACER_THREAD
+
 static constexpr int kFramebufferWidth = 640;
 static constexpr int kFramebufferHeight = 480;
 static constexpr int kTextureWidth = 256;
@@ -98,6 +100,7 @@ static void WaitForRequestComplete() {
   }
 }
 
+#ifdef ENABLE_TRACER_THREAD
 static DWORD __attribute__((stdcall))
 TracerThreadMain(LPVOID lpThreadParameter) {
   while (!has_rendered_frame) {
@@ -157,6 +160,7 @@ TracerThreadMain(LPVOID lpThreadParameter) {
   TracerShutdown();
   return 0;
 }
+#endif  // ENABLE_TRACER_THREAD
 
 static float wrap_color(float val) {
   while (val < 0.f) {
@@ -186,6 +190,7 @@ int main() {
 
   CreateGeometry(renderer);
 
+#ifdef ENABLE_TRACER_THREAD
   DWORD tracer_thread_id;
   auto tracer_thread =
       CreateThread(nullptr, 0, TracerThreadMain, nullptr, 0, &tracer_thread_id);
@@ -195,6 +200,7 @@ int main() {
     Sleep(2000);
     return 1;
   }
+#endif  // ENABLE_TRACER_THREAD
 
   // Render some test content.
   // Note that this is intentionally inefficient, the intent is to test the
