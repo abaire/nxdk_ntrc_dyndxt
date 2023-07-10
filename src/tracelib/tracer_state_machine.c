@@ -820,8 +820,8 @@ static void LogCommand(const PushBufferCommandTraceInfo *info) {
     uint32_t data_size = info->command.parameter_count * 4;
     WriteBuffer(state_machine.on_pgraph_buffer_bytes_available,
                 &state_machine.pgraph_critical_section,
-                state_machine.pgraph_buffer, info->data.data.buffer, data_size,
-                state_machine.pgraph_buffer_notify_threshold);
+                state_machine.pgraph_buffer, info->data.data.heap_buffer,
+                data_size, state_machine.pgraph_buffer_notify_threshold);
   }
 }
 
