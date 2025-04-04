@@ -3,7 +3,7 @@
 #include "register_defs.h"
 #include "xbox_helper.h"
 
-#define LOOP_CYCLES 10
+#define LOOP_CYCLES 128
 
 KickResult KickFIFO(uint32_t expected_push) {
   KickResult ret = KICK_BAD_READ_PUSH_ADDR;
