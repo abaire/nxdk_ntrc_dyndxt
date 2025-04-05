@@ -79,7 +79,7 @@ uint32_t ParsePushBufferCommand(uint32_t addr,
 
   if (command == 0x00020000) {
 #ifdef VERBOSE_DEBUG
-    sprintf(buf + buf_end, "; unhandled opcode type: return\n");
+    snprintf(buf + buf_end, sizeof(buf) - buf_end, "; return 0x%08X\n", trace->subroutine_return_address);
     DbgPrint(buf);
 #endif  // VERBOSE_DEBUG
     if (!trace->subroutine_return_address) {
