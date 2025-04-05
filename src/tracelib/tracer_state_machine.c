@@ -839,6 +839,7 @@ static BOOL PeekAheadForFlipStall(BOOL *found, uint32_t dma_pull_addr,
   uint32_t peek_dma_pull_addr = dma_pull_addr;
   for (uint32_t i = 0; i < 5 && peek_dma_pull_addr != real_dma_push_addr; ++i) {
     PushBufferCommandTraceInfo info;
+    info.subroutine_return_address = 0;
     uint32_t peek_unprocessed_bytes =
         ProcessPushBufferCommand(&peek_dma_pull_addr, &info, TRUE, TRUE);
 
@@ -893,6 +894,7 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
 
   while (TracerGetState() == working_state) {
     PushBufferCommandTraceInfo info;
+    info.subroutine_return_address = 0;
     info.packet_index = command_index++;
 
     PROFILE_START();

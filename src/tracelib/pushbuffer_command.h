@@ -65,14 +65,19 @@ typedef struct PushBufferCommandTraceInfo {
   //! The PGRAPH graphics class for this packet (e.g., 0x97 for 3D).
   uint32_t graphics_class;
 
-  // Parameters passed to the command, if any.
-  // If populated, this will always be exactly (command.parameter_count * 4)
-  // bytes.
+  //! Parameters passed to the command, if any.
+  //! If populated, this will always be exactly (command.parameter_count * 4)
+  //! bytes.
   PushBufferCommandParameters data;
+
+  //! Address to return to in response to a DMA return command.
+  //! This value must be initialized to zero to detect (unsupported) nested
+  //! subroutines.
+  uint32_t subroutine_return_address;
 } __attribute((packed)) PushBufferCommandTraceInfo;
 
-//! Processes the given `command` uint32_t, populating a `PushBufferCommand`
-//! with expanded details.
+//! Processes the given `command` uint32_t, populating the `command` element
+//! within the given `PushBufferCommandTraceInfo` with expanded details.
 //!
 //! On fatal error, returns 0.
 //! If the command is processed in some way, returns the address of the next
@@ -82,7 +87,7 @@ typedef struct PushBufferCommandTraceInfo {
 //! `PushBufferCommand` data, so it is important to check both the return of
 //! this method and the `valid` field.
 uint32_t ParsePushBufferCommand(uint32_t addr, uint32_t command,
-                                PushBufferCommand *info);
+                                PushBufferCommandTraceInfo *trace);
 
 // Processes a pushbuffer command starting at the given address.
 // Populates the given `PushBufferCommandTraceInfo` with the expanded details of

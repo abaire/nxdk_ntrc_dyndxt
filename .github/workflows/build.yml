@@ -18,15 +18,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone tree
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
           path: nxdk_ntrc_dyndxt
       - name: Clone nxdk
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: XboxDev/nxdk
-          ref: 500354ef264f35a46a31643876b06ed614b0aed8
+          ref: 233a190b3c6da7df51700e01a435e3c2a55fdc11
           submodules: recursive
           path: nxdk
       - name: Install dependencies
@@ -67,15 +67,15 @@ jobs:
     runs-on: macOS-latest
     steps:
       - name: Clone tree
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
           path: nxdk_ntrc_dyndxt
       - name: Clone nxdk
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: XboxDev/nxdk
-          ref: 500354ef264f35a46a31643876b06ed614b0aed8
+          ref: 233a190b3c6da7df51700e01a435e3c2a55fdc11
           submodules: recursive
           path: nxdk
       - name: Install dependencies
@@ -86,7 +86,8 @@ jobs:
             cmake \
             coreutils \
             boost \
-            llvm \
+            llvm@19 \
+            lld \
             sdl2 \
             sdl2_image \
             nasm

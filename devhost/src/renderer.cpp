@@ -90,8 +90,8 @@ void Renderer::ClearDepthStencilRegion(uint32_t depth_value,
     height = framebuffer_height_;
   }
 
-  set_depth_stencil_buffer_region(depth_buffer_format_, depth_value,
-                                  stencil_value, left, top, width, height);
+  pb_set_depth_stencil_buffer_region(depth_buffer_format_, depth_value,
+                                     stencil_value, left, top, width, height);
 }
 
 void Renderer::ClearColorRegion(uint32_t argb, uint32_t left, uint32_t top,
@@ -201,7 +201,7 @@ float Renderer::MaxDepthBufferValue(uint32_t depth_buffer_format,
       // max_depth = 0x7F7FFF80;  // z24_max as 32-bit float.
       *(uint32_t *)&max_depth =
           0x7149F2CA;  // Observed value, 1e+30 (also used for directional
-                       // lighting as "infinity").
+      // lighting as "infinity").
     } else {
       max_depth = static_cast<float>(0x00FFFFFF);
     }
