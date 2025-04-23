@@ -47,6 +47,10 @@
 #define DEFAULT_AUX_BUFFER_SIZE (1024 * 1024 * 4)
 #define MIN_AUX_BUFFER_SIZE (1024 * 512)
 
+// Maximum number of sleep/kick attempts before permanently failing FIFO
+// population.
+#define MAX_STALL_WORKAROUNDS 32
+
 typedef enum TracerRequest {
   REQ_NONE,
   REQ_WAIT_FOR_STABLE_PUSH_BUFFER,
@@ -117,8 +121,8 @@ static const uint32_t kMaxQueueDepthBeforeFlush = 200;
 
 static TracerStateMachine state_machine = {0};
 
-static DWORD __attribute__((stdcall))
-TracerThreadMain(LPVOID lpThreadParameter);
+static DWORD __attribute__((stdcall)) TracerThreadMain(
+    LPVOID lpThreadParameter);
 
 static void SetState(TracerState new_state);
 static TracerRequest GetRequest(void);
@@ -129,11 +133,9 @@ static void WaitForStablePushBufferState(void);
 static void DiscardUntilFramebufferFlip(BOOL require_new_frame);
 static void TraceUntilFramebufferFlip(BOOL discard);
 
-#define HOOK_METHOD(cmd, pre_cb, post_cb) \
-  { TRUE, cmd, pre_cb, post_cb }
+#define HOOK_METHOD(cmd, pre_cb, post_cb) {TRUE, cmd, pre_cb, post_cb}
 
-#define HOOK_END() \
-  { FALSE, 0, NULL, NULL }
+#define HOOK_END() {FALSE, 0, NULL, NULL}
 
 static PGRAPHCommandProcessor kClass97Processors[] = {
     HOOK_METHOD(NV097_CLEAR_SURFACE, NULL, TraceSurfaces),
@@ -403,8 +405,8 @@ void TracerUnlockAuxBuffer(void) {
   LeaveCriticalSection(&state_machine.aux_critical_section);
 }
 
-static DWORD __attribute__((stdcall))
-TracerThreadMain(LPVOID lpThreadParameter) {
+static DWORD __attribute__((stdcall)) TracerThreadMain(
+    LPVOID lpThreadParameter) {
   while (TracerGetState() == STATE_INITIALIZING) {
     Sleep(1);
   }
@@ -999,7 +1001,7 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
       if (last_push_addr == real_dma_push_addr) {
         if (++sleep_calls > 10) {
           sleep_calls = 0;
-          if (++stall_workarounds > 10) {
+          if (++stall_workarounds > MAX_STALL_WORKAROUNDS) {
             DbgPrint("Permanent stall detected, aborting...\n");
             SetState(STATE_FATAL_PERMANENT_STALL);
             CompleteRequest();
@@ -1012,7 +1014,7 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
           EnablePGRAPHFIFO();
           ResumeFIFOPusher();
           ResumeFIFOPuller();
-          Sleep(50);
+          Sleep(25);
           PauseFIFOPusher();
           DisablePGRAPHFIFO();
           PROFILE_SEND("Stall workaround");
