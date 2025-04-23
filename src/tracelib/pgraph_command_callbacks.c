@@ -44,8 +44,12 @@ static const uint32_t kTag = 0x6E744343;  // 'ntCC'
 //! Value that may be added to contiguous memory addresses to access as
 //! ADDR_AGPMEM, which is guaranteed to be linear (and thus may be slower than
 //! tiled ADDR_FBMEM but can be manipulated directly).
-static const uint32_t kAGPMemoryBase = 0xF0000000;
-#define AGP_ADDR(a) (const uint8_t *)(kAGPMemoryBase | (a))
+// static const uint32_t kAGPMemoryBase = 0xF0000000;
+// #define AGP_ADDR(a) (const uint8_t *)(kAGPMemoryBase | (a))
+
+//! Value added to contiguous memory addresses to access as framebuffer memory.
+static const uint32_t kFramebufferMemoryBase = 0x80000000;
+#define FB_ADDR(a) (const uint8_t *)(kFramebufferMemoryBase | (a))
 
 typedef struct TextureParameters {
   uint32_t width;
@@ -259,12 +263,9 @@ static void StoreSurface(const PushBufferCommandTraceInfo *info,
   memcpy(write_ptr, description, description_len);  // NOLINT
   write_ptr += description_len;
 
-  // TODO: Only fall back on AGP access if the surface format is complicated.
-  // AGP reads are slow; a 640x480x4 buffer takes around 13 seconds (tested on
-  // a 1.0 devkit w/ a debug build).
   PROFILE_INIT();
   PROFILE_START();
-  memcpy(write_ptr, AGP_ADDR(surface_offset), len);
+  memcpy(write_ptr, FB_ADDR(surface_offset), len);
   PROFILE_SEND("StoreSurface - AGP memcpy");
 
   PROFILE_START();
@@ -381,7 +382,7 @@ static void StoreTextureLayer(const PushBufferCommandTraceInfo *info,
   header->control1 = control1;
 
   uint8_t *write_ptr = buffer + sizeof(*header);
-  memcpy(write_ptr, AGP_ADDR(adjusted_offset), len);
+  memcpy(write_ptr, FB_ADDR(adjusted_offset), len);
 
   store(info, ADT_TEXTURE, buffer, buffer_size);
   DmFreePool(buffer);
@@ -401,7 +402,6 @@ static void StoreTextureStage(const PushBufferCommandTraceInfo *info,
   uint32_t pitch = control1 >> 16;
   uint32_t format = ReadDWORD(PGRAPH_TEXFMT0 + reg_offset);
 
-  uint32_t fmt_color = (format >> 8) & 0x7F;
   uint32_t width_shift = (format >> 20) & 0xF;
   uint32_t height_shift = (format >> 24) & 0xF;
   uint32_t depth_shift = (format >> 28) & 0xF;
@@ -411,7 +411,7 @@ static void StoreTextureStage(const PushBufferCommandTraceInfo *info,
 
   VERBOSE_PRINT(
       ("Texture %d [0x%08X, %d x %d x %d (pitch register: 0x%X), format 0x%X]",
-       stage, offset, width, height, depth, pitch, fmt_color));
+       stage, offset, width, height, depth, pitch, (format >> 8) & 0x7F));
 
   uint32_t adjusted_offset = offset;
   for (uint32_t layer = 0; layer < depth; ++layer) {

@@ -88,11 +88,11 @@ static void WaitForState(TracerState state) {
   }
 }
 
-static void WaitForState(const std::set<TracerState>& states) {
-  while (states.find(tracer_state) == states.cend()) {
-    Sleep(1);
-  }
-}
+// static void WaitForState(const std::set<TracerState>& states) {
+//   while (states.find(tracer_state) == states.cend()) {
+//     Sleep(1);
+//   }
+// }
 
 static void WaitForRequestComplete() {
   while (TracerIsProcessingRequest()) {
@@ -101,8 +101,8 @@ static void WaitForRequestComplete() {
 }
 
 #ifdef ENABLE_TRACER_THREAD
-static DWORD __attribute__((stdcall))
-TracerThreadMain(LPVOID lpThreadParameter) {
+static DWORD __attribute__((stdcall)) TracerThreadMain(
+    LPVOID lpThreadParameter) {
   while (!has_rendered_frame) {
     Sleep(1);
   }
