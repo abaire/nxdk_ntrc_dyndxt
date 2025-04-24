@@ -54,6 +54,8 @@ typedef enum SurfaceType {
 typedef struct SurfaceHeader {
   //! The intended use of this surface.
   uint32_t type;
+  //! The format of this surface (e.g., A8R8G8B8).
+  uint32_t format;
   //! The number of ASCII characters immediately following this header
   //! containing a description of the content.
   uint32_t description_len;
@@ -63,7 +65,17 @@ typedef struct SurfaceHeader {
 
   uint32_t width;
   uint32_t height;
+  //! The bytes per row.
   uint32_t pitch;
+
+  uint32_t clip_x;
+  uint32_t clip_y;
+  uint32_t clip_width;
+  uint32_t clip_height;
+
+  //! Whether this surface is swizzled or not.
+  uint32_t swizzle;
+  uint32_t swizzle_param;
 } __attribute((packed)) SurfaceHeader;
 
 //! Header describing texture data.
@@ -86,6 +98,9 @@ typedef struct TextureHeader {
   uint32_t control0;
   //! The value of the control1 register.
   uint32_t control1;
+
+  //! Packed image width ((x >> 16) & 0x1FFF) | height (x & 0x1FFF).
+  uint32_t image_rect;
 } __attribute((packed)) TextureHeader;
 
 //! Controls auxiliary buffer tracing.

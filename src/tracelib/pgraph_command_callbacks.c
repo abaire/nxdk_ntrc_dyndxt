@@ -39,17 +39,25 @@
 #define PROFILE_SEND(msg)
 #endif
 
+#define NV_PGRAPH_TILE_XBOX 0xFD400900
+#define NV_PGRAPH_TLIMIT_XBOX 0xFD400904
+#define NV_PGRAPH_TSIZE_XBOX 0xFD400908
+#define NV_PGRAPH_ZCOMP_XBOX 0xFD400980
+#define NV_PGRAPH_ZCOMP_OFFSET_XBOX 0xFD4009A0
+#define NV_PGRAPH_CFG0_XBOX 0xFD4009A4
+#define NV_PGRAPH_CFG1_XBOX 0xFD4009A8
+
 static const uint32_t kTag = 0x6E744343;  // 'ntCC'
 
 //! Value that may be added to contiguous memory addresses to access as
 //! ADDR_AGPMEM, which is guaranteed to be linear (and thus may be slower than
 //! tiled ADDR_FBMEM but can be manipulated directly).
-// static const uint32_t kAGPMemoryBase = 0xF0000000;
-// #define AGP_ADDR(a) (const uint8_t *)(kAGPMemoryBase | (a))
+static const uint32_t kAGPMemoryBase = 0xF0000000;
+#define AGP_ADDR(a) (const uint8_t *)(kAGPMemoryBase | (a))
 
 //! Value added to contiguous memory addresses to access as framebuffer memory.
-static const uint32_t kFramebufferMemoryBase = 0x80000000;
-#define FB_ADDR(a) (const uint8_t *)(kFramebufferMemoryBase | (a))
+// static const uint32_t kFramebufferMemoryBase = 0x80000000;
+// #define FB_ADDR(a) (const uint8_t *)(kFramebufferMemoryBase | (a))
 
 typedef struct TextureParameters {
   uint32_t width;
@@ -61,6 +69,11 @@ typedef struct TextureParameters {
   uint32_t depth_pitch;
   uint32_t depth_offset;
   uint32_t surface_type;
+  uint32_t clip_x;
+  uint32_t clip_y;
+  uint32_t clip_w;
+  uint32_t clip_h;
+  uint32_t swizzle_param;
   BOOL swizzled;
 } TextureParameters;
 
@@ -102,38 +115,37 @@ static void ReadTextureParameters(TextureParameters *params) {
 
   params->surface_type = ReadDWORD(0xFD400710);
 
-  //  uint32_t swizzle_unk = ReadDWORD(0xFD400818);
   //  uint32_t swizzle_unk2 = ReadDWORD(0xFD40086C);
 
-  uint32_t clip_x = surface_clip_x & 0xFFFF;
-  uint32_t clip_y = surface_clip_y & 0xFFFF;
+  params->clip_x = surface_clip_x & 0xFFFF;
+  params->clip_y = surface_clip_y & 0xFFFF;
 
-  uint32_t clip_w = (surface_clip_x >> 16) & 0xFFFF;
-  uint32_t clip_h = (surface_clip_y >> 16) & 0xFFFF;
+  params->clip_w = (surface_clip_x >> 16) & 0xFFFF;
+  params->clip_h = (surface_clip_y >> 16) & 0xFFFF;
+
+  uint32_t swizzle_unk = ReadDWORD(0xFD400818);
+  params->swizzle_param = swizzle_unk;
 
   BOOL surface_anti_aliasing = ((params->surface_type >> 4) & 3) != 0;
 
-  ApplyAntiAliasingFactor(surface_anti_aliasing, &clip_x, &clip_y);
-  ApplyAntiAliasingFactor(surface_anti_aliasing, &clip_w, &clip_h);
+  ApplyAntiAliasingFactor(surface_anti_aliasing, &params->clip_x,
+                          &params->clip_y);
+  ApplyAntiAliasingFactor(surface_anti_aliasing, &params->clip_w,
+                          &params->clip_h);
 
-  params->width = clip_x + clip_w;
-  params->height = clip_y + clip_h;
+  params->width = params->clip_w;
+  params->height = params->clip_h;
 
-  // FIXME: 128 x 128 [pitch = 256 (0x100)], at 0x01AA8000 [PGRAPH:0x01AA8000?],
-  //   format 0x5, type: 0x21000002, swizzle: 0x7070000 [used 0]
-
-  // FIXME: This does not seem to be a good field for this
-  // FIXME: Patched to give 50% of coolness
   params->swizzled = (params->surface_type & 3) == 2;
 
   // FIXME: if surface_type is 0, we probably can't even draw..
   uint32_t draw_format = ReadDWORD(0xFD400804);
   params->format_color = (draw_format >> 12) & 0xF;
-
-  // FIXME: Support 3D surfaces.
   params->format_depth = (draw_format >> 18) & 0x3;
 
-  // TODO: Extract swizzle and float state.
+  // TODO: Support 3D surfaces.
+
+  // TODO: Extract float state.
 }
 
 //! Stores the PGRAPH region.
@@ -231,14 +243,17 @@ static void StoreRDI(const PushBufferCommandTraceInfo *info, StoreAuxData store,
 
 static void StoreSurface(const PushBufferCommandTraceInfo *info,
                          StoreAuxData store, SurfaceType type,
-                         uint32_t surface_offset, uint32_t width,
-                         uint32_t height, uint32_t pitch,
+                         uint32_t surface_format, uint32_t surface_offset,
+                         uint32_t width, uint32_t height, uint32_t pitch,
+                         uint32_t clip_x, uint32_t clip_y, uint32_t clip_w,
+                         uint32_t clip_h, BOOL swizzle, uint32_t swizzle_param,
                          const char *description) {
-  uint32_t len = pitch * height;
+  uint32_t len = pitch * (clip_y + height);
   if (!len) {
     DbgPrint(
-        "Error: calculated zero length when reading surface %d. W=%u H=%u P=%u",
-        type, width, height, pitch);
+        "Error: calculated zero length when reading surface %d. W=%u H=%u P=%u "
+        "clip=%u,%u,%u,%u",
+        type, width, height, pitch, clip_x, clip_y, clip_w, clip_h);
     return;
   }
   uint32_t description_len = strlen(description);
@@ -252,12 +267,18 @@ static void StoreSurface(const PushBufferCommandTraceInfo *info,
 
   SurfaceHeader *header = (SurfaceHeader *)buffer;
   header->type = type;
+  header->format = surface_format;
   header->len = len;
   header->width = width;
   header->height = height;
   header->pitch = pitch;
+  header->swizzle = swizzle;
+  header->clip_x = clip_x;
+  header->clip_y = clip_y;
+  header->clip_width = clip_w;
+  header->clip_height = clip_h;
+  header->swizzle_param = swizzle_param;
   header->description_len = description_len;
-
   uint8_t *write_ptr = buffer + sizeof(*header);
   // null terminator is intentionally omitted.
   memcpy(write_ptr, description, description_len);  // NOLINT
@@ -265,7 +286,8 @@ static void StoreSurface(const PushBufferCommandTraceInfo *info,
 
   PROFILE_INIT();
   PROFILE_START();
-  memcpy(write_ptr, FB_ADDR(surface_offset), len);
+  // TODO: Only read from AGP if needed, it is far slower than FB_ADDR reads.
+  memcpy(write_ptr, AGP_ADDR(surface_offset), len);
   PROFILE_SEND("StoreSurface - AGP memcpy");
 
   PROFILE_START();
@@ -304,26 +326,34 @@ void TraceSurfaces(const PushBufferCommandTraceInfo *info, StoreAuxData store,
     char description[256];
     snprintf(description, sizeof(description),
              "%d x %d [pitch = %d (0x%X)], at 0x%08X, format 0x%X, type: 0x%X, "
-             "swizzled: %s",
+             "swizzled: %s, clip: %d,%d,%d,%d",
              params.width, params.height, params.color_pitch,
              params.color_pitch, params.color_offset, params.format_color,
-             params.surface_type, params.swizzled ? "Y" : "N");
+             params.surface_type, params.swizzled ? "Y" : "N", params.clip_x,
+             params.clip_y, params.clip_w, params.clip_h);
     PROFILE_START();
-    StoreSurface(info, store, ST_COLOR, params.color_offset, params.width,
-                 params.height, params.color_pitch, description);
+    StoreSurface(info, store, ST_COLOR, params.format_color,
+                 params.color_offset, params.width, params.height,
+                 params.color_pitch, params.clip_x, params.clip_y,
+                 params.clip_w, params.clip_h, params.swizzled,
+                 params.swizzle_param, description);
     PROFILE_SEND("TraceSurfaces - Store color surface");
   }
   if (config->surface_depth_capture_enabled && params.depth_offset) {
     char description[256];
     snprintf(description, sizeof(description),
              "%d x %d [pitch = %d (0x%X)], at 0x%08X, format 0x%X, type: 0x%X, "
-             "swizzled: %s",
+             "swizzled: %s, clip: %d,%d,%d,%d",
              params.width, params.height, params.depth_pitch,
              params.depth_pitch, params.depth_offset, params.format_depth,
-             params.surface_type, params.swizzled ? "Y" : "N");
+             params.surface_type, params.swizzled ? "Y" : "N", params.clip_x,
+             params.clip_y, params.clip_w, params.clip_h);
     PROFILE_START();
-    StoreSurface(info, store, ST_DEPTH, params.depth_offset, params.width,
-                 params.height, params.depth_pitch, description);
+    StoreSurface(info, store, ST_DEPTH, params.format_depth,
+                 params.depth_offset, params.width, params.height,
+                 params.depth_pitch, params.clip_x, params.clip_y,
+                 params.clip_w, params.clip_h, params.swizzled,
+                 params.swizzle_param, description);
     PROFILE_SEND("TraceSurfaces - Store depth surface");
   }
 
@@ -345,13 +375,109 @@ void TraceSurfaces(const PushBufferCommandTraceInfo *info, StoreAuxData store,
   }
 }
 
+struct TextureFormatInfo {
+  uint32_t format;
+  uint32_t bytes_per_pixel;
+  BOOL swizzled;
+  BOOL linear;
+};
+
+static const struct TextureFormatInfo kTextureFormatInfo[] = {
+    // swizzled
+    {NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8B8G8R8, 4, TRUE, FALSE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R8G8B8A8, 4, TRUE, FALSE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8R8G8B8, 4, TRUE, FALSE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_SZ_X8R8G8B8, 4, TRUE, FALSE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_SZ_B8G8R8A8, 4, TRUE, FALSE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R5G6B5, 2, TRUE, FALSE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A1R5G5B5, 2, TRUE, FALSE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_SZ_X1R5G5B5, 2, TRUE, FALSE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A4R4G4B4, 2, TRUE, FALSE},
+
+    // linear unsigned
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8B8G8R8, 4, FALSE, TRUE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R8G8B8A8, 4, FALSE, TRUE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8R8G8B8, 4, FALSE, TRUE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X8R8G8B8, 4, FALSE, TRUE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_B8G8R8A8, 4, FALSE, TRUE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5, 2, FALSE, TRUE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A1R5G5B5, 2, FALSE, TRUE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X1R5G5B5, 2, FALSE, TRUE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A4R4G4B4, 2, FALSE, TRUE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8, 2, FALSE, TRUE},
+
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_X8_Y24_FIXED, 4, FALSE,
+     TRUE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FIXED, 2, FALSE, TRUE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FLOAT, 2, FALSE, TRUE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_Y16, 2, FALSE, TRUE},
+
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_CR8YB8CB8YA8, 2, FALSE, TRUE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_YB8CR8YA8CB8, 2, FALSE, TRUE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_Y8, 1, FALSE, TRUE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_AY8, 1, FALSE, TRUE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_SZ_Y8, 1, TRUE, FALSE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_SZ_AY8, 1, TRUE, FALSE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8Y8, 4, TRUE, FALSE},
+
+    {NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8, 2, TRUE, FALSE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R8B8, 2, TRUE, FALSE},
+
+    // Compressed formats
+    {NV097_SET_TEXTURE_FORMAT_COLOR_L_DXT1_A1R5G5B5, 4, FALSE, FALSE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_L_DXT23_A8R8G8B8, 4, FALSE, FALSE},
+    {NV097_SET_TEXTURE_FORMAT_COLOR_L_DXT45_A8R8G8B8, 4, FALSE, FALSE},
+
+    // Indexed formats
+    {NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8, 1, TRUE, FALSE},
+
+    // End tag.
+    {0, 0, FALSE, FALSE},
+};
+
+static const struct TextureFormatInfo *GetFormatInfo(uint32_t texture_format) {
+  const struct TextureFormatInfo *ret = kTextureFormatInfo;
+  while (ret->bytes_per_pixel && ret->format != texture_format) {
+    ++ret;
+  }
+  return ret;
+}
+
 static void StoreTextureLayer(const PushBufferCommandTraceInfo *info,
                               StoreAuxData store, uint32_t stage,
                               uint32_t layer, uint32_t adjusted_offset,
                               uint32_t width, uint32_t height, uint32_t depth,
-                              uint32_t pitch, uint32_t format,
-                              uint32_t control0, uint32_t control1) {
-  uint32_t len = pitch * height;
+                              uint32_t pitch, uint32_t format_register,
+                              uint32_t format, uint32_t control0,
+                              uint32_t control1, uint32_t image_rect) {
+  const struct TextureFormatInfo *format_info = GetFormatInfo(format);
+  if (!format_info->bytes_per_pixel) {
+    DbgPrint("Error: failed to look up texture format 0x%X\n", format);
+    return;
+  }
+
+  uint32_t len = 0;
+  if (format_info->swizzled) {
+    pitch = width * format_info->bytes_per_pixel;
+    len = pitch * height;
+  } else if (format_info->linear) {
+    width = (image_rect >> 16) & 0x1FFF;
+    height = image_rect & 0x1FFF;
+    len = pitch * height;
+  } else {
+    // Reconstruct pitch from the compression type. DXT1 is 8 bytes per 4x4,
+    // DXT3 and DXT5 are 16.
+    uint32_t block_width = (width + 3) / 4;
+    uint32_t block_height = (height + 3) / 4;
+    if (format == NV097_SET_TEXTURE_FORMAT_COLOR_L_DXT1_A1R5G5B5) {
+      pitch = block_width << 3;
+    } else {
+      pitch = block_width << 4;
+    }
+
+    len = pitch * block_height;
+  }
+
   if (!len) {
     DbgPrint(
         "Error: calculated zero length when reading texture %u:%u. W=%u H=%u "
@@ -373,16 +499,17 @@ static void StoreTextureLayer(const PushBufferCommandTraceInfo *info,
   header->layer = layer;
 
   header->len = len;
-  header->format = format;
+  header->format = format_register;
   header->width = width;
   header->height = height;
   header->depth = depth;
   header->pitch = pitch;
   header->control0 = control0;
   header->control1 = control1;
+  header->image_rect = image_rect;
 
   uint8_t *write_ptr = buffer + sizeof(*header);
-  memcpy(write_ptr, FB_ADDR(adjusted_offset), len);
+  memcpy(write_ptr, AGP_ADDR(adjusted_offset), len);
 
   store(info, ADT_TEXTURE, buffer, buffer_size);
   DmFreePool(buffer);
@@ -399,8 +526,10 @@ static void StoreTextureStage(const PushBufferCommandTraceInfo *info,
 
   uint32_t offset = ReadDWORD(PGRAPH_TEXOFFSET0 + reg_offset);
   uint32_t control1 = ReadDWORD(PGRAPH_TEXCTL1_0 + reg_offset);
-  uint32_t pitch = control1 >> 16;
+  uint32_t pitch = (control1 >> 16) & 0xFFFF;
   uint32_t format = ReadDWORD(PGRAPH_TEXFMT0 + reg_offset);
+  uint32_t image_rect = ReadDWORD(PGRAPH_TEXIMAGERECT0 + reg_offset);
+  uint32_t texture_type = (format >> 8) & 0x7F;
 
   uint32_t width_shift = (format >> 20) & 0xF;
   uint32_t height_shift = (format >> 24) & 0xF;
@@ -416,7 +545,8 @@ static void StoreTextureStage(const PushBufferCommandTraceInfo *info,
   uint32_t adjusted_offset = offset;
   for (uint32_t layer = 0; layer < depth; ++layer) {
     StoreTextureLayer(info, store, stage, layer, adjusted_offset, width, height,
-                      depth, pitch, format, control0, control1);
+                      depth, pitch, format, texture_type, control0, control1,
+                      image_rect);
     adjusted_offset += pitch * height;
   }
 }
