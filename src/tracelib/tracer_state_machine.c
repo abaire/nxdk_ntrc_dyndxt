@@ -91,7 +91,7 @@ typedef struct TracerStateMachine {
 //! Describes a callback that may be called before/after a PGRAPH command is
 //! processed.
 typedef void (*PGRAPHCommandCallback)(const PushBufferCommandTraceInfo *info,
-                                      StoreAuxData store,
+                                      TraceContext *state, StoreAuxData store,
                                       const AuxConfig *config);
 
 typedef struct PGRAPHCommandProcessor {
@@ -133,11 +133,9 @@ static void WaitForStablePushBufferState(void);
 static void DiscardUntilFramebufferFlip(BOOL require_new_frame);
 static void TraceUntilFramebufferFlip(BOOL discard);
 
-#define HOOK_METHOD(cmd, pre_cb, post_cb) \
-  { TRUE, cmd, pre_cb, post_cb }
+#define HOOK_METHOD(cmd, pre_cb, post_cb) {TRUE, cmd, pre_cb, post_cb}
 
-#define HOOK_END() \
-  { FALSE, 0, NULL, NULL }
+#define HOOK_END() {FALSE, 0, NULL, NULL}
 
 static PGRAPHCommandProcessor kClass97Processors[] = {
     HOOK_METHOD(NV097_CLEAR_SURFACE, NULL, TraceSurfaces),
@@ -729,7 +727,8 @@ static void LogAuxData(const PushBufferCommandTraceInfo *trigger,
     return;
   }
 
-  AuxDataHeader header = {trigger->packet_index, type, len};
+  AuxDataHeader header = {trigger->packet_index, trigger->draw_index, type,
+                          len};
   WriteBuffer(state_machine.on_aux_buffer_bytes_available,
               &state_machine.aux_critical_section, state_machine.aux_buffer,
               &header, sizeof(header), 0);
@@ -740,7 +739,7 @@ static void LogAuxData(const PushBufferCommandTraceInfo *trigger,
 
 static uint32_t ProcessPushBufferCommand(
     uint32_t *dma_pull_addr, PushBufferCommandTraceInfo *method_info,
-    BOOL discard, BOOL skip_hooks) {
+    TraceContext *ctx, BOOL discard, BOOL skip_hooks) {
   method_info->valid = FALSE;
   uint32_t unprocessed_bytes = 0;
 
@@ -779,7 +778,7 @@ static uint32_t ProcessPushBufferCommand(
       // Do the pre callback before running the command
       // FIXME: assert we are where we wanted to be
       PROFILE_START();
-      pre_callback(method_info, LogAuxData,
+      pre_callback(method_info, ctx, LogAuxData,
                    &state_machine.config.aux_tracing_config);
       PROFILE_SEND("PreCallback invocation:");
     }
@@ -802,7 +801,7 @@ static uint32_t ProcessPushBufferCommand(
       unprocessed_bytes = 0;
 
       PROFILE_START();
-      post_callback(method_info, LogAuxData,
+      post_callback(method_info, ctx, LogAuxData,
                     &state_machine.config.aux_tracing_config);
       PROFILE_SEND("PostCallback invocation");
     }
@@ -847,9 +846,10 @@ static BOOL PeekAheadForFlipStall(BOOL *found, uint32_t dma_pull_addr,
   uint32_t peek_dma_pull_addr = dma_pull_addr;
   for (uint32_t i = 0; i < 5 && peek_dma_pull_addr != real_dma_push_addr; ++i) {
     PushBufferCommandTraceInfo info;
+    TraceContext ctx;
     info.subroutine_return_address = 0;
     uint32_t peek_unprocessed_bytes =
-        ProcessPushBufferCommand(&peek_dma_pull_addr, &info, TRUE, TRUE);
+        ProcessPushBufferCommand(&peek_dma_pull_addr, &info, &ctx, TRUE, TRUE);
 
     if (peek_unprocessed_bytes == 0xFFFFFFFF) {
       DbgPrint("ERROR: Failed to process pbuffer command during seek.\n");
@@ -890,6 +890,7 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
   uint32_t dma_pull_addr = state_machine.real_dma_pull_addr;
 
   uint32_t command_index = 1;
+  TraceContext ctx = {0};
   uint32_t last_push_addr = 0;
   uint32_t sleep_calls = 0;
   uint32_t stall_workarounds = 0;
@@ -904,10 +905,11 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
     PushBufferCommandTraceInfo info;
     info.subroutine_return_address = 0;
     info.packet_index = command_index++;
+    info.draw_index = ctx.draw_index;
 
     PROFILE_START();
     uint32_t unprocessed_bytes =
-        ProcessPushBufferCommand(&dma_pull_addr, &info, discard, discard);
+        ProcessPushBufferCommand(&dma_pull_addr, &info, &ctx, discard, discard);
     PROFILE_SEND("ProcessPushBufferCommand");
 
     if (unprocessed_bytes == 0xFFFFFFFF) {
@@ -937,7 +939,7 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
       // On detection of an increment, a few commands are peeked to guess
       // whether this is an nxdk title or an XDK one where the inc should not be
       // considered a flip.
-      if (info.command.method == NV097_FLIP_INCREMENT_WRITE) {
+      if (!is_flip && info.command.method == NV097_FLIP_INCREMENT_WRITE) {
         VERBOSE_PRINT(("Found FLIP_INC, seeking FLIP_STALL!\n"));
         BOOL flip_found = FALSE;
         if (!PeekAheadForFlipStall(&flip_found, dma_pull_addr,
@@ -1064,5 +1066,5 @@ static void DiscardUntilFramebufferFlip(BOOL require_new_frame) {
     return;
   }
 
-  TraceUntilFramebufferFlip(true);
+  TraceUntilFramebufferFlip(TRUE);
 }

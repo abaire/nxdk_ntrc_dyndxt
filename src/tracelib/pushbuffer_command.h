@@ -56,6 +56,9 @@ typedef struct PushBufferCommandTraceInfo {
   //! captures (e.g., framebuffer dumps).
   uint32_t packet_index;
 
+  //! The number of BEGIN_END(end) calls since the trace began.
+  uint32_t draw_index;
+
   //! The actual command.
   PushBufferCommand command;
 

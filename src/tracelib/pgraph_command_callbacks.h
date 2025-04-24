@@ -29,6 +29,10 @@ typedef struct AuxDataHeader {
   //! associated.
   uint32_t packet_index;
 
+  //! The draw count of the PushBufferCommandTraceInfo packet with which this
+  //! data is associated.
+  uint32_t draw_index;
+
   //! A value from AuxDataType indicating the type of data.
   uint32_t data_type;
 
@@ -124,6 +128,11 @@ typedef struct AuxConfig {
   BOOL texture_capture_enabled;
 } AuxConfig;
 
+typedef struct TraceContext {
+  //! The index of the current draw operation.
+  uint32_t draw_index;
+} TraceContext;
+
 //! Callback that may be invoked to send auxiliary data to the remote.
 //!
 //! \param trigger - The PushBufferCommandTraceInfo that this data is associated
@@ -135,16 +144,16 @@ typedef void (*StoreAuxData)(const PushBufferCommandTraceInfo *trigger,
                              AuxDataType type, const void *data, uint32_t len);
 
 //! Dump color/depth surfaces, shader data, etc...
-void TraceSurfaces(const PushBufferCommandTraceInfo *info, StoreAuxData store,
-                   const AuxConfig *config);
+void TraceSurfaces(const PushBufferCommandTraceInfo *info, TraceContext *ctx,
+                   StoreAuxData store, const AuxConfig *config);
 
 //! Dump textures.
-void TraceBegin(const PushBufferCommandTraceInfo *info, StoreAuxData store,
-                const AuxConfig *config);
+void TraceBegin(const PushBufferCommandTraceInfo *info, TraceContext *ctx,
+                StoreAuxData store, const AuxConfig *config);
 
 //! Dump surfaces.
-void TraceEnd(const PushBufferCommandTraceInfo *info, StoreAuxData store,
-              const AuxConfig *config);
+void TraceEnd(const PushBufferCommandTraceInfo *info, TraceContext *ctx,
+              StoreAuxData store, const AuxConfig *config);
 
 #ifdef __cplusplus
 }  // extern "C"

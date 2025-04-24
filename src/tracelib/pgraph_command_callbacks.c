@@ -296,8 +296,8 @@ static void StoreSurface(const PushBufferCommandTraceInfo *info,
   DmFreePool(buffer);
 }
 
-void TraceSurfaces(const PushBufferCommandTraceInfo *info, StoreAuxData store,
-                   const AuxConfig *config) {
+void TraceSurfaces(const PushBufferCommandTraceInfo *info, TraceContext *ctx,
+                   StoreAuxData store, const AuxConfig *config) {
   if (config->raw_pgraph_capture_enabled) {
     StorePGRAPH(info, store);
   }
@@ -557,8 +557,8 @@ void TraceTextures(const PushBufferCommandTraceInfo *info, StoreAuxData store) {
   }
 }
 
-void TraceBegin(const PushBufferCommandTraceInfo *info, StoreAuxData store,
-                const AuxConfig *config) {
+void TraceBegin(const PushBufferCommandTraceInfo *info, TraceContext *ctx,
+                StoreAuxData store, const AuxConfig *config) {
   if (!config->texture_capture_enabled) {
     return;
   }
@@ -573,12 +573,12 @@ void TraceBegin(const PushBufferCommandTraceInfo *info, StoreAuxData store,
     return;
   }
 
-  DbgPrint("Begin %d\n", info->packet_index);
+  DbgPrint("Begin %d %u\n", info->packet_index, info->draw_index);
   TraceTextures(info, store);
 }
 
-void TraceEnd(const PushBufferCommandTraceInfo *info, StoreAuxData store,
-              const AuxConfig *config) {
+void TraceEnd(const PushBufferCommandTraceInfo *info, TraceContext *ctx,
+              StoreAuxData store, const AuxConfig *config) {
   if (!config->surface_depth_capture_enabled &&
       !config->surface_color_capture_enabled &&
       !config->raw_pgraph_capture_enabled && !config->raw_pfb_capture_enabled) {
@@ -594,6 +594,7 @@ void TraceEnd(const PushBufferCommandTraceInfo *info, StoreAuxData store,
     return;
   }
 
-  DbgPrint("End %d\n", info->packet_index);
-  TraceSurfaces(info, store, config);
+  DbgPrint("End %d %u\n", info->packet_index, info->draw_index);
+  ++ctx->draw_index;
+  TraceSurfaces(info, ctx, store, config);
 }
