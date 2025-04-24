@@ -133,9 +133,11 @@ static void WaitForStablePushBufferState(void);
 static void DiscardUntilFramebufferFlip(BOOL require_new_frame);
 static void TraceUntilFramebufferFlip(BOOL discard);
 
-#define HOOK_METHOD(cmd, pre_cb, post_cb) {TRUE, cmd, pre_cb, post_cb}
+#define HOOK_METHOD(cmd, pre_cb, post_cb) \
+  { TRUE, cmd, pre_cb, post_cb }
 
-#define HOOK_END() {FALSE, 0, NULL, NULL}
+#define HOOK_END() \
+  { FALSE, 0, NULL, NULL }
 
 static PGRAPHCommandProcessor kClass97Processors[] = {
     HOOK_METHOD(NV097_CLEAR_SURFACE, NULL, TraceSurfaces),
@@ -1015,19 +1017,27 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
             CompleteRequest();
             return;
           }
-          DbgPrint("Stall detected, attempting to populate FIFO\n");
+          DbgPrint(
+              "Stall detected, attempting to populate FIFO: Real push: 0x%08X, "
+              "live push: 0x%08X, live pull: 0x%08X\n",
+              real_dma_push_addr, GetDMAPushAddress(), GetDMAPullAddress());
           PROFILE_START();
           // NOTE: EnableFIFO + ResumePusher + SwitchToThread() + PausePusher +
           // DisableFIFO is insufficient to fix this problem.
           EnablePGRAPHFIFO();
           ResumeFIFOPusher();
+          Sleep(50);
           ResumeFIFOPuller();
-          Sleep(15);
           SwitchToThread();
-          Sleep(15);
+          Sleep(50);
+          SwitchToThread();
           PauseFIFOPusher();
           DisablePGRAPHFIFO();
           PROFILE_SEND("Stall workaround");
+          VERBOSE_PRINT((
+              "Post stall workaround: Real push: live push: 0x%08X, live pull: "
+              "0x%08X\n",
+              GetDMAPushAddress(), GetDMAPullAddress()));
         }
       } else {
         last_push_addr = real_dma_push_addr;
