@@ -757,7 +757,7 @@ static uint32_t ProcessPushBufferCommand(
   }
 
   if (!method_info->valid) {
-    DbgPrint("WARNING: No method. Going to 0x%08X", post_addr);
+    DbgPrint("WARNING: No method. Going to 0x%08X\n", post_addr);
     unprocessed_bytes = 4;
   } else {
     // Calculate the size of the instruction + any associated parameters.

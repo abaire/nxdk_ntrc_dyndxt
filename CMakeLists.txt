@@ -19,6 +19,7 @@ set(CMAKE_C_CREATE_SHARED_LIBRARY "${NXDK_DIR}/bin/${TOOLCHAIN_PREFIX}-link <CMA
 set(CMAKE_CXX_CREATE_SHARED_LIBRARY "${NXDK_DIR}/bin/${TOOLCHAIN_PREFIX}-link <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -out:<TARGET> <LINK_LIBRARIES>")
 
 add_subdirectory(devhost)
+add_subdirectory(third_party/fastmemcpy)
 
 # The tests are built using the host toolchain rather than the target (nxdk).
 ExternalProject_Add(
@@ -69,7 +70,10 @@ set_target_properties(
 add_dependencies(xbdm_lib dyndxt_loader)
 
 # Import library containing Dynamic DXT DLL exports.
-add_library(dynamic_dxt_loader_lib SHARED IMPORTED)
+add_library(dynamic_dxt_loader_lib SHARED IMPORTED
+        third_party/fastmemcpy/fastmemcpy.c
+        third_party/fastmemcpy/fastmemcpy.h
+        test/stub/fastmemcpy/fastmemcpy.h)
 set_target_properties(
         dynamic_dxt_loader_lib
         PROPERTIES
@@ -123,6 +127,7 @@ target_link_libraries(
         PUBLIC
         dynamic_dxt_loader_lib
         xbdm_lib
+        fastmemcpy
 )
 
 if(CMAKE_BUILD_TYPE MATCHES Debug)

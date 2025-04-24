@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "circular_buffer_impl.h"
+#include "fastmemcpy/fastmemcpy.h"
 
 static void Write(CircularBufferImpl *cb, const void *data, uint32_t data_size);
 static void Read(CircularBufferImpl *cb, void *buffer, uint32_t size);
@@ -157,14 +158,14 @@ static void Write(CircularBufferImpl *cb, const void *data,
   // the write, so the only test is against the underlying buffer end.
   uint32_t bytes_to_end = cb->size - cb->write;
   if (bytes_to_end < data_size) {
-    memcpy(cb->buffer + cb->write, data, bytes_to_end);
+    mmx_memcpy(cb->buffer + cb->write, data, bytes_to_end);
     data += bytes_to_end;
     cb->write = 0;
     data_size -= bytes_to_end;
   }
 
   if (data_size) {
-    memcpy(cb->buffer + cb->write, data, data_size);
+    mmx_memcpy(cb->buffer + cb->write, data, data_size);
     cb->write += data_size;
   }
 }
@@ -174,12 +175,12 @@ static void Read(CircularBufferImpl *cb, void *buffer, uint32_t size) {
   // read, so the only test is against the underlying buffer end.
   uint32_t bytes_to_end = cb->size - cb->read;
   if (bytes_to_end < size) {
-    memcpy(buffer, cb->buffer + cb->read, bytes_to_end);
+    mmx_memcpy(buffer, cb->buffer + cb->read, bytes_to_end);
     buffer += bytes_to_end;
     cb->read = 0;
     size -= bytes_to_end;
   }
 
-  memcpy(buffer, cb->buffer + cb->read, size);
+  mmx_memcpy(buffer, cb->buffer + cb->read, size);
   cb->read += size;
 }

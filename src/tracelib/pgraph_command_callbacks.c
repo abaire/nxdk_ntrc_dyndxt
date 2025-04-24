@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "fastmemcpy/fastmemcpy.h"
 #include "pushbuffer_command.h"
 #include "register_defs.h"
 #include "xbdm.h"
@@ -162,15 +163,15 @@ static void StorePGRAPH(const PushBufferCommandTraceInfo *info,
   // 0xFD400200 hangs Xbox, but skipping 0x200 - 0x400 works.
   // TODO: Needs further testing which regions work.
   uint8_t *write_ptr = buffer;
-  memcpy(write_ptr, (uint8_t *)PGRAPH_REGION, 0x200);
+  mmx_memcpy(write_ptr, (uint8_t *)PGRAPH_REGION, 0x200);
   write_ptr += 0x200;
 
   // Null out the unreadable bytes.
   memset(write_ptr, 0, 0x200);
   write_ptr += 0x200;
 
-  memcpy(write_ptr, (uint8_t *)(PGRAPH_REGION + 0x400),
-         PGRAPH_REGION_SIZE - 0x400);
+  mmx_memcpy(write_ptr, (uint8_t *)(PGRAPH_REGION + 0x400),
+             PGRAPH_REGION_SIZE - 0x400);
 
   store(info, ADT_PGRAPH_DUMP, buffer, 0x2000);
   DmFreePool(buffer);
@@ -187,7 +188,7 @@ static void StorePFB(const PushBufferCommandTraceInfo *info,
     return;
   }
 
-  memcpy(buffer, (uint8_t *)PFB_REGION, PFB_REGION_SIZE);
+  mmx_memcpy(buffer, (uint8_t *)PFB_REGION, PFB_REGION_SIZE);
 
   store(info, ADT_PFB_DUMP, buffer, 0x2000);
   DmFreePool(buffer);
@@ -287,7 +288,7 @@ static void StoreSurface(const PushBufferCommandTraceInfo *info,
   PROFILE_INIT();
   PROFILE_START();
   // TODO: Only read from AGP if needed, it is far slower than FB_ADDR reads.
-  memcpy(write_ptr, AGP_ADDR(surface_offset), len);
+  mmx_memcpy(write_ptr, AGP_ADDR(surface_offset), len);
   PROFILE_SEND("StoreSurface - AGP memcpy");
 
   PROFILE_START();
@@ -509,7 +510,7 @@ static void StoreTextureLayer(const PushBufferCommandTraceInfo *info,
   header->image_rect = image_rect;
 
   uint8_t *write_ptr = buffer + sizeof(*header);
-  memcpy(write_ptr, AGP_ADDR(adjusted_offset), len);
+  mmx_memcpy(write_ptr, AGP_ADDR(adjusted_offset), len);
 
   store(info, ADT_TEXTURE, buffer, buffer_size);
   DmFreePool(buffer);

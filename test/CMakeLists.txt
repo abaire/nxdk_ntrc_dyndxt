@@ -29,7 +29,9 @@ add_executable(
 )
 target_include_directories(
         circular_buffer_tests
-        PRIVATE "${ntrc_dyndxt_source_directory}"
+        PRIVATE
+        "${ntrc_dyndxt_source_directory}"
+        stub
 )
 target_link_libraries(
         circular_buffer_tests
