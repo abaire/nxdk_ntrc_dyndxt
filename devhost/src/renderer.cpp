@@ -808,8 +808,7 @@ void Renderer::SetupControl0(bool enable_stencil_write) const {
                                     : NV097_SET_CONTROL0_Z_FORMAT_FIXED);
 
   if (requires_colorspace_conversion) {
-    control0 |= MASK(NV097_SET_CONTROL0_COLOR_SPACE_CONVERT,
-                     NV097_SET_CONTROL0_COLOR_SPACE_CONVERT_CRYCB_TO_RGB);
+    control0 |= NV097_SET_CONTROL0_COLOR_SPACE_CONVERT_CRYCB_TO_RGB;
   }
   auto p = pb_begin();
   p = pb_push1(p, NV097_SET_CONTROL0, control0);

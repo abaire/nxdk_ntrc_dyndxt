@@ -133,9 +133,11 @@ static void WaitForStablePushBufferState(void);
 static void DiscardUntilFramebufferFlip(BOOL require_new_frame);
 static void TraceUntilFramebufferFlip(BOOL discard);
 
-#define HOOK_METHOD(cmd, pre_cb, post_cb) {TRUE, cmd, pre_cb, post_cb}
+#define HOOK_METHOD(cmd, pre_cb, post_cb) \
+  { TRUE, cmd, pre_cb, post_cb }
 
-#define HOOK_END() {FALSE, 0, NULL, NULL}
+#define HOOK_END() \
+  { FALSE, 0, NULL, NULL }
 
 static PGRAPHCommandProcessor kClass97Processors[] = {
     HOOK_METHOD(NV097_CLEAR_SURFACE, NULL, TraceSurfaces),
@@ -444,7 +446,7 @@ static DWORD __attribute__((stdcall)) TracerThreadMain(
         break;
 
       case REQ_TRACE_UNTIL_FLIP: {
-        TraceUntilFramebufferFlip(false);
+        TraceUntilFramebufferFlip(FALSE);
 
         uint32_t bytes_available = CBAvailable(state_machine.pgraph_buffer);
         if (bytes_available) {
@@ -596,6 +598,12 @@ static void RunFIFO(uint32_t pull_addr_target) {
   // FIXME: we can avoid this read in some cases, as we should know where we are
   state_machine.real_dma_pull_addr = GetDMAPullAddress();
 
+  if (state_machine.real_dma_pull_addr == pull_addr_target) {
+    VERBOSE_PRINT(
+        ("RunFIFO: Early bailout, real pull addr 0x%X == target 0x%X\n",
+         state_machine.real_dma_pull_addr, pull_addr_target));
+  }
+
   // Loop while this command is being run.
   // This is necessary because a whole command might not fit into CACHE.
   // So we have to process it chunk by chunk.
@@ -629,14 +637,12 @@ static void RunFIFO(uint32_t pull_addr_target) {
     // FIXME: xemu does not seem to implement the CACHE behavior
     // This leads to an infinite loop as the kick fails to populate the cache.
     KickResult result = KickFIFO(pull_addr_target);
-    int32_t i = 0;
-    for (; result == KICK_TIMEOUT && i < 4; ++i) {
-      result = KickFIFO(pull_addr_target);
-    }
-    if (result != KICK_OK && result != KICK_TIMEOUT) {
-      DbgPrint("WARNING: FIFO kick failed: %d\n", result);
-    } else if (result == KICK_TIMEOUT) {
-      DbgPrint("WARNING: FIFO kick timed out\n");
+    if (result != KICK_OK) {
+      if (result == KICK_TIMEOUT) {
+        DbgPrint("WARNING: FIFO kick timed out\n");
+      } else {
+        DbgPrint("WARNING: FIFO kick failed: %d\n", result);
+      }
     }
 
     // Run the commands we have moved to CACHE, by enabling PGRAPH.
@@ -1014,7 +1020,9 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
           EnablePGRAPHFIFO();
           ResumeFIFOPusher();
           ResumeFIFOPuller();
-          Sleep(25);
+          Sleep(15);
+          SwitchToThread();
+          Sleep(15);
           PauseFIFOPusher();
           DisablePGRAPHFIFO();
           PROFILE_SEND("Stall workaround");
@@ -1027,7 +1035,7 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
       VERBOSE_PRINT(
           ("Reached end of buffer with %d bytes queued - waiting 5 ms\n",
            bytes_queued));
-      SwitchToThread();
+      Sleep(5);
     } else {
       sleep_calls = 0;
 #ifdef VERBOSE_DEBUG
