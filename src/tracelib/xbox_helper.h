@@ -44,8 +44,8 @@ void SetDMAPushAddress(uint32_t target);
 
 void GetDMAState(DMAState *result);
 
-// Returns the current PGRAPH graphics class.
-uint32_t FetchActiveGraphicsClass(void);
+// Returns the PGRAPH graphics class registered for the given subchannel.
+uint32_t FetchGraphicsClassForSubchannel(uint32_t subchannel);
 
 #ifdef __cplusplus
 }  // extern "C"

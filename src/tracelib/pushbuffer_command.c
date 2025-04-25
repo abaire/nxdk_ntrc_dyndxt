@@ -8,14 +8,13 @@
 
 // #define VERBOSE_DEBUG
 
-static const uint32_t kTag = 0x6E745043; // 'ntPC'
+static const uint32_t kTag = 0x6E745043;  // 'ntPC'
 
 // Offset that must be added to pushbuffer commands in order to read them.
 static const uint32_t kAccessibleAddrOffset = 0x80000000;
 #define PB_ADDR(a) (kAccessibleAddrOffset | (a))
 
-uint32_t ParsePushBufferCommand(uint32_t addr,
-                                uint32_t command,
+uint32_t ParsePushBufferCommand(uint32_t addr, uint32_t command,
                                 PushBufferCommandTraceInfo *trace) {
   PushBufferCommand *info = &trace->command;
 
@@ -50,17 +49,16 @@ uint32_t ParsePushBufferCommand(uint32_t addr,
     addr += 4;
     uint32_t subroutine_addr = command & 0xFFFFFFFC;
 #ifdef VERBOSE_DEBUG
-    sprintf(buf + buf_end, "; call 0x%08X - return to 0x%08X\n", subroutine_addr, addr);
+    sprintf(buf + buf_end, "; call 0x%08X - return to 0x%08X\n",
+            subroutine_addr, addr);
     DbgPrint(buf);
 #endif  // VERBOSE_DEBUG
     if (trace->subroutine_return_address) {
 #ifdef VERBOSE_DEBUG
       sprintf(buf + buf_end,
-          "; call 0x%08X - return to 0x%08X but nested in subroutine with return 0x%08X\n",
-          subroutine_addr,
-          addr,
-          trace->subroutine_return_address
-      );
+              "; call 0x%08X - return to 0x%08X but nested in subroutine with "
+              "return 0x%08X\n",
+              subroutine_addr, addr, trace->subroutine_return_address);
       DbgPrint(buf);
 #endif  // VERBOSE_DEBUG
       return 0;
@@ -79,17 +77,16 @@ uint32_t ParsePushBufferCommand(uint32_t addr,
 
   if (command == 0x00020000) {
 #ifdef VERBOSE_DEBUG
-    snprintf(buf + buf_end, sizeof(buf) - buf_end, "; return 0x%08X\n", trace->subroutine_return_address);
+    snprintf(buf + buf_end, sizeof(buf) - buf_end, "; return 0x%08X\n",
+             trace->subroutine_return_address);
     DbgPrint(buf);
 #endif  // VERBOSE_DEBUG
     if (!trace->subroutine_return_address) {
 #ifdef VERBOSE_DEBUG
       sprintf(buf + buf_end,
-          "; call 0x%08X - return to 0x%08X but nested in subroutine with return 0x%08X\n",
-          subroutine_addr,
-          addr,
-          trace->subroutine_return_address
-      );
+              "; call 0x%08X - return to 0x%08X but nested in subroutine with "
+              "return 0x%08X\n",
+              subroutine_addr, addr, trace->subroutine_return_address);
       DbgPrint(buf);
 #endif  // VERBOSE_DEBUG
       return 0;
@@ -125,11 +122,10 @@ uint32_t ParsePushBufferCommand(uint32_t addr,
   return addr;
 }
 
-static BOOL ReadParameters(uint32_t pull_addr,
-                           uint32_t count,
+static BOOL ReadParameters(uint32_t pull_addr, uint32_t count,
                            PushBufferCommandParameters *data) {
   uint32_t data_len = count * 4;
-  const uint8_t *data_addr = (const uint8_t *) (PB_ADDR(pull_addr));
+  const uint8_t *data_addr = (const uint8_t *)(PB_ADDR(pull_addr));
   data_addr += 4;
 
   if (data_len <= sizeof(data->data.buffer)) {
@@ -138,12 +134,11 @@ static BOOL ReadParameters(uint32_t pull_addr,
     return TRUE;
   }
 
-  data->data.heap_buffer = (uint8_t *) DmAllocatePoolWithTag(data_len, kTag);
+  data->data.heap_buffer = (uint8_t *)DmAllocatePoolWithTag(data_len, kTag);
   if (!data->data.heap_buffer) {
     DbgPrint(
-      "Allocation failed processing %d data bytes for command at 0x%08X\n",
-      data_len,
-      pull_addr);
+        "Allocation failed processing %d data bytes for command at 0x%08X\n",
+        data_len, pull_addr);
     data->data_state = PBCPDS_INVALID;
     return FALSE;
   }
@@ -166,13 +161,11 @@ uint32_t ParsePushBufferCommandTraceInfo(uint32_t pull_addr,
   // word)])
 
   // FIXME: Get where this command ends.
-  uint32_t next_parser_addr =
-      ParsePushBufferCommand(pull_addr, raw_cmd, info);
+  uint32_t next_parser_addr = ParsePushBufferCommand(pull_addr, raw_cmd, info);
 
   if (!next_parser_addr) {
     // If we don't know where this command ends, we have to abort.
-    DbgPrint("Failed to process command 0x%08X at 0x%08X\n",
-             raw_cmd,
+    DbgPrint("Failed to process command 0x%08X at 0x%08X\n", raw_cmd,
              pull_addr);
     return 0;
   }
@@ -181,17 +174,13 @@ uint32_t ParsePushBufferCommandTraceInfo(uint32_t pull_addr,
     info->valid = TRUE;
     info->address = pull_addr;
 
-    // TODO: Check to see if it's possible for this to be out of sync.
-    // If there's some backup in the pushbuffer processing, is it possible for
-    // the CTX_SWITCH1 register to be set for a command other than the one at
-    // `pull_addr`?
-    info->graphics_class = FetchActiveGraphicsClass();
+    info->graphics_class =
+        FetchGraphicsClassForSubchannel(info->command.subchannel);
 
     // Note: Halo: CE has cases where `parameter_count` == 0 that must be
     // accounted for.
     if (info->command.parameter_count && !discard_parameters) {
-      if (!ReadParameters(pull_addr,
-                          info->command.parameter_count,
+      if (!ReadParameters(pull_addr, info->command.parameter_count,
                           &info->data)) {
         info->valid = FALSE;
         return 0;
@@ -204,23 +193,21 @@ uint32_t ParsePushBufferCommandTraceInfo(uint32_t pull_addr,
   return next_parser_addr;
 }
 
-BOOL GetParameter(const PushBufferCommandTraceInfo *info,
-                  uint32_t index,
+BOOL GetParameter(const PushBufferCommandTraceInfo *info, uint32_t index,
                   uint32_t *out) {
   if (!info || !info->valid || info->data.data_state == PBCPDS_INVALID) {
     return FALSE;
   }
 
   if (index >= info->command.parameter_count) {
-    DbgPrint("GetParameter: Index out of range (%u >= %u)\n",
-             index,
+    DbgPrint("GetParameter: Index out of range (%u >= %u)\n", index,
              info->command.parameter_count);
     return FALSE;
   }
 
   const uint32_t *data = info->data.data_state == PBCPDS_HEAP_BUFFER
-                           ? (const uint32_t *) info->data.data.heap_buffer
-                           : info->data.data.buffer;
+                             ? (const uint32_t *)info->data.data.heap_buffer
+                             : info->data.data.buffer;
   *out = data[index];
 
   return TRUE;

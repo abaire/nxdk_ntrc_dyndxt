@@ -73,7 +73,7 @@ void GetDMAState(DMAState *state) {
   state->error = (dma_state >> 29) & 0x07;
 }
 
-uint32_t FetchActiveGraphicsClass(void) {
-  uint32_t ctx_switch_1 = ReadDWORD(CTX_SWITCH1);
-  return ctx_switch_1 & 0xFF;
+uint32_t FetchGraphicsClassForSubchannel(uint32_t subchannel) {
+  uint32_t data = ReadDWORD(PGRAPH_CTX_CACHE1(subchannel));
+  return data & 0xFF;
 }
