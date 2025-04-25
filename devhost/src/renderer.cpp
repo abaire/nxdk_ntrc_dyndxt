@@ -897,6 +897,8 @@ void Renderer::FinishDraw() {
   while (pb_finished()) {
     /* Not ready to swap yet */
   }
+
+  pb_reset();
 }
 
 void Renderer::SetVertexShaderProgram(
