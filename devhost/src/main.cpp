@@ -59,7 +59,7 @@ static void OnTracerStateChanged(TracerState new_state) {
       break;
   }
 
-  PrintMsg("Tracer state changed: %s[%d]", state_name.c_str(), new_state);
+  PrintMsg("Tracer state changed: %s[%d]\n", state_name.c_str(), new_state);
   tracer_state = new_state;
 }
 
