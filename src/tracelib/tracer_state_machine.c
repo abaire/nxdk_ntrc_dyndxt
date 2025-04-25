@@ -133,11 +133,9 @@ static void WaitForStablePushBufferState(void);
 static void DiscardUntilFramebufferFlip(BOOL require_new_frame);
 static void TraceUntilFramebufferFlip(BOOL discard);
 
-#define HOOK_METHOD(cmd, pre_cb, post_cb) \
-  { TRUE, cmd, pre_cb, post_cb }
+#define HOOK_METHOD(cmd, pre_cb, post_cb) {TRUE, cmd, pre_cb, post_cb}
 
-#define HOOK_END() \
-  { FALSE, 0, NULL, NULL }
+#define HOOK_END() {FALSE, 0, NULL, NULL}
 
 static PGRAPHCommandProcessor kClass97Processors[] = {
     HOOK_METHOD(NV097_CLEAR_SURFACE, NULL, TraceSurfaces),
@@ -761,7 +759,7 @@ static uint32_t ProcessPushBufferCommand(
     unprocessed_bytes = 4;
   } else {
     // Calculate the size of the instruction + any associated parameters.
-    unprocessed_bytes = 4 + method_info->command.parameter_count * 4;
+    unprocessed_bytes = post_addr - *dma_pull_addr;
 
     PGRAPHCommandCallback pre_callback = NULL;
     PGRAPHCommandCallback post_callback = NULL;
