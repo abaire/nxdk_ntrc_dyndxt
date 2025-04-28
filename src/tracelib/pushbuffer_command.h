@@ -59,6 +59,9 @@ typedef struct PushBufferCommandTraceInfo {
   //! The number of BEGIN_END(end) calls since the trace began.
   uint32_t draw_index;
 
+  //! The number of times surfaces have been stored since the trace began.
+  uint32_t surface_dump_index;
+
   //! The actual command.
   PushBufferCommand command;
 

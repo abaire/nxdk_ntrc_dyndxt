@@ -280,6 +280,10 @@ static void StoreSurface(const PushBufferCommandTraceInfo *info,
   header->clip_height = clip_h;
   header->swizzle_param = swizzle_param;
   header->description_len = description_len;
+  header->save_context.provoking_command = info->command.method;
+  header->save_context.draw_index = info->draw_index;
+  header->save_context.surface_dump_index = info->surface_dump_index;
+
   uint8_t *write_ptr = buffer + sizeof(*header);
   // null terminator is intentionally omitted.
   memcpy(write_ptr, description, description_len);  // NOLINT
@@ -374,6 +378,8 @@ void TraceSurfaces(const PushBufferCommandTraceInfo *info, TraceContext *ctx,
     StoreRDI(info, store, 0xCC0000, 192 * 4);
     PROFILE_SEND("TraceSurfaces - StoreRDI - c1");
   }
+
+  ++ctx->surface_dump_index;
 }
 
 struct TextureFormatInfo {
@@ -499,6 +505,10 @@ static void StoreTextureLayer(const PushBufferCommandTraceInfo *info,
   header->stage = stage;
   header->layer = layer;
 
+  header->save_context.provoking_command = info->command.method;
+  header->save_context.draw_index = info->draw_index;
+  header->save_context.surface_dump_index = info->surface_dump_index;
+
   header->len = len;
   header->format = format_register;
   header->width = width;
@@ -574,7 +584,8 @@ void TraceBegin(const PushBufferCommandTraceInfo *info, TraceContext *ctx,
     return;
   }
 
-  DbgPrint("Begin %d %u\n", info->packet_index, info->draw_index);
+  DbgPrint("Begin %d %u %u\n", info->packet_index, info->draw_index,
+           info->surface_dump_index);
   TraceTextures(info, store);
 }
 
@@ -595,7 +606,8 @@ void TraceEnd(const PushBufferCommandTraceInfo *info, TraceContext *ctx,
     return;
   }
 
-  DbgPrint("End %d %u\n", info->packet_index, info->draw_index);
+  DbgPrint("End %d %u %u\n", info->packet_index, info->draw_index,
+           info->surface_dump_index);
   ++ctx->draw_index;
   TraceSurfaces(info, ctx, store, config);
 }

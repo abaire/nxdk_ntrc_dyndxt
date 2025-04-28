@@ -133,9 +133,11 @@ static void WaitForStablePushBufferState(void);
 static void DiscardUntilFramebufferFlip(BOOL require_new_frame);
 static void TraceUntilFramebufferFlip(BOOL discard);
 
-#define HOOK_METHOD(cmd, pre_cb, post_cb) {TRUE, cmd, pre_cb, post_cb}
+#define HOOK_METHOD(cmd, pre_cb, post_cb) \
+  { TRUE, cmd, pre_cb, post_cb }
 
-#define HOOK_END() {FALSE, 0, NULL, NULL}
+#define HOOK_END() \
+  { FALSE, 0, NULL, NULL }
 
 static PGRAPHCommandProcessor kClass97Processors[] = {
     HOOK_METHOD(NV097_CLEAR_SURFACE, NULL, TraceSurfaces),
@@ -890,7 +892,7 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
   uint32_t dma_pull_addr = state_machine.real_dma_pull_addr;
 
   uint32_t command_index = 1;
-  TraceContext ctx = {0};
+  TraceContext ctx = {0, 0};
   uint32_t last_push_addr = 0;
   uint32_t sleep_calls = 0;
   uint32_t stall_workarounds = 0;
@@ -906,6 +908,7 @@ static void TraceUntilFramebufferFlip(BOOL discard) {
     info.subroutine_return_address = 0;
     info.packet_index = command_index++;
     info.draw_index = ctx.draw_index;
+    info.surface_dump_index = ctx.surface_dump_index;
 
     PROFILE_START();
     uint32_t unprocessed_bytes =

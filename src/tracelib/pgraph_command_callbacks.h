@@ -54,6 +54,19 @@ typedef enum SurfaceType {
   ST_DEPTH,
 } SurfaceType;
 
+//! Subheader providing contextual information associated with a surface or
+//! texture.
+typedef struct ImageSaveContext {
+  //! The PGRAPH command that caused this surface to be saved.
+  uint32_t provoking_command;
+
+  //! The number of BEGIN_END(end) calls since the trace began.
+  uint32_t draw_index;
+
+  //! The number of times surfaces have been stored since the trace began.
+  uint32_t surface_dump_index;
+} __attribute((packed)) ImageSaveContext;
+
 //! Header describing surface data.
 typedef struct SurfaceHeader {
   //! The intended use of this surface.
@@ -80,6 +93,8 @@ typedef struct SurfaceHeader {
   //! Whether this surface is swizzled or not.
   uint32_t swizzle;
   uint32_t swizzle_param;
+
+  ImageSaveContext save_context;
 } __attribute((packed)) SurfaceHeader;
 
 //! Header describing texture data.
@@ -105,6 +120,8 @@ typedef struct TextureHeader {
 
   //! Packed image width ((x >> 16) & 0x1FFF) | height (x & 0x1FFF).
   uint32_t image_rect;
+
+  ImageSaveContext save_context;
 } __attribute((packed)) TextureHeader;
 
 //! Controls auxiliary buffer tracing.
@@ -131,6 +148,9 @@ typedef struct AuxConfig {
 typedef struct TraceContext {
   //! The index of the current draw operation.
   uint32_t draw_index;
+
+  //! The index of the current TraceSurfaces operation.
+  uint32_t surface_dump_index;
 } TraceContext;
 
 //! Callback that may be invoked to send auxiliary data to the remote.
