@@ -127,6 +127,8 @@
     "Using prefetches efficiently is more of an art than a science"
 */
 
+#include <stddef.h>
+
 /* for small memory blocks (<256 bytes) this version is faster */
 #define small_memcpy(to, from, n)                               \
   {                                                             \
@@ -138,7 +140,7 @@
   }
 
 /* linux kernel __memcpy (from: /include/asm/string.h) */
-static inline void *__memcpy(void *to, const void *from, size_t n) {
+static inline void* __memcpy(void* to, const void* from, size_t n) {
   int d0, d1, d2;
 
   if (n < 4) {
@@ -164,8 +166,8 @@ static inline void *__memcpy(void *to, const void *from, size_t n) {
 
 #define MMX1_MIN_LEN 0x800 /* 2K blocks */
 
-void *mmx_memcpy(void *to, const void *from, size_t len) {
-  void *retval;
+void* mmx_memcpy(void* to, const void* from, size_t len) {
+  void* retval;
   size_t i;
   retval = to;
 
@@ -200,8 +202,8 @@ void *mmx_memcpy(void *to, const void *from, size_t len) {
           "movq %%mm7, 56(%1)\n" ::"r"(from),
           "r"(to)
           : "memory");
-      from = ((const unsigned char *)from) + 64;
-      to = ((unsigned char *)to) + 64;
+      from = ((const unsigned char*)from) + 64;
+      to = ((unsigned char*)to) + 64;
     }
     __asm__ __volatile__("emms" ::: "memory");
   }
