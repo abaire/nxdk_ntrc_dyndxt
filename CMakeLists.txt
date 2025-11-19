@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.18)
 project(ntrc_dyndxt)
 
+option(BUILD_TESTING "Build the tests for this project" ON)
+
 set_property(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
 set(CMAKE_SHARED_LIBRARY_SUFFIX ".dll")
 set(CMAKE_SHARED_LIBRARY_SUFFIX_C ".dll")
@@ -12,7 +14,7 @@ set(CMAKE_CXX_STANDARD 17)
 include(CMakePushCheckState)
 set(_CMAKE_PROCESSING_LANGUAGE "C")
 include(CheckSymbolExists)
-include (ExternalProject)
+include(ExternalProject)
 include(FindPkgConfig)
 
 set(CMAKE_C_CREATE_SHARED_LIBRARY "${NXDK_DIR}/bin/${TOOLCHAIN_PREFIX}-link <CMAKE_C_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -out:<TARGET> <LINK_LIBRARIES>")
@@ -22,26 +24,31 @@ add_subdirectory(devhost)
 add_subdirectory(third_party/fastmemcpy)
 
 # The tests are built using the host toolchain rather than the target (nxdk).
-ExternalProject_Add(
-        ntrc_dyndxt_tests
-        PREFIX ntrc_dyndxt_tests
-        SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/test
-        BINARY_DIR ntrc_dyndxt_tests
-        INSTALL_COMMAND ""
-        EXCLUDE_FROM_ALL FALSE
-        BUILD_ALWAYS TRUE
-)
+if (BUILD_TESTING)
+    ExternalProject_Add(
+            ntrc_dyndxt_tests
+            PREFIX ntrc_dyndxt_tests
+            SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/test
+            BINARY_DIR ntrc_dyndxt_tests
+            INSTALL_COMMAND ""
+            EXCLUDE_FROM_ALL FALSE
+            BUILD_ALWAYS TRUE
+    )
+endif ()
 
 # Import the dynamic DXT loader, which provides some shared functions.
 ExternalProject_Add(
         dyndxt_loader
         PREFIX ddxt
         GIT_REPOSITORY https://github.com/abaire/nxdk_dyndxt.git
-        GIT_TAG origin/main
-        CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE} -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+        GIT_TAG f7c6bceab191ea7218920bb662eb5132dfb212ea
+        CMAKE_ARGS
+        -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+        -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+        -DBUILD_TESTING=OFF
         BUILD_COMMAND ""
         INSTALL_COMMAND
-            cmake --build . --target install --config Release
+        cmake --build . --target install --config Release
         BUILD_BYPRODUCTS
         ddxt/lib/xbdm.lib
         ddxt/lib/libdynamic_dxt_loader.lib
@@ -57,7 +64,7 @@ set(dyndxt_lib_dir ${INSTALL_DIR}/lib)
 set(dyndxt_include_dir ${INSTALL_DIR}/include)
 
 # Pre-create the directory to pass CMake generator check.
-file (MAKE_DIRECTORY ${dyndxt_include_dir})
+file(MAKE_DIRECTORY ${dyndxt_include_dir})
 
 # Import library containing various XBDM DLL exports.
 add_library(xbdm_lib SHARED IMPORTED)
@@ -130,7 +137,7 @@ target_link_libraries(
         fastmemcpy
 )
 
-if(CMAKE_BUILD_TYPE MATCHES Debug)
+if (CMAKE_BUILD_TYPE MATCHES Debug)
     target_compile_options(
             "${LIB_TARGET}"
             PRIVATE
@@ -141,7 +148,7 @@ if(CMAKE_BUILD_TYPE MATCHES Debug)
             -fstandalone-debug
     )
     target_link_options("${LIB_TARGET}" PRIVATE "/debug:full")
-else()
+else ()
     target_compile_options(
             "${LIB_TARGET}"
             PRIVATE
@@ -149,7 +156,7 @@ else()
             -Wall
     )
     target_link_options("${LIB_TARGET}" PRIVATE "/debug:none")
-endif()
+endif ()
 
 
 set(TARGET ntrc_dyndxt)
@@ -206,7 +213,7 @@ target_link_libraries(
         "${LIB_TARGET}"
 )
 
-if(CMAKE_BUILD_TYPE MATCHES Debug)
+if (CMAKE_BUILD_TYPE MATCHES Debug)
     target_compile_options(
             "${TARGET}"
             PRIVATE
@@ -217,7 +224,7 @@ if(CMAKE_BUILD_TYPE MATCHES Debug)
             -fstandalone-debug
     )
     target_link_options("${TARGET}" PRIVATE "/debug:full")
-else()
+else ()
     target_compile_options(
             "${TARGET}"
             PRIVATE
@@ -225,7 +232,7 @@ else()
             -Wall
     )
     target_link_options("${TARGET}" PRIVATE "/debug:none")
-endif()
+endif ()
 
 
 install(
