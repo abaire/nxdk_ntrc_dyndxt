@@ -39,7 +39,6 @@ endif ()
 # Import the dynamic DXT loader, which provides some shared functions.
 ExternalProject_Add(
         dyndxt_loader
-        PREFIX ddxt
         GIT_REPOSITORY https://github.com/abaire/nxdk_dyndxt.git
         GIT_TAG 3b2f46569f3fe70e48f67df79a57b4ce53f0fad7
         CMAKE_ARGS
@@ -50,13 +49,13 @@ ExternalProject_Add(
         INSTALL_COMMAND
         cmake --build . --target install --config Release
         BUILD_BYPRODUCTS
-        ddxt/lib/xbdm.lib
-        ddxt/lib/libdynamic_dxt_loader.lib
-        ddxt/include/command_processor_util.h
-        ddxt/include/module_registry.h
-        ddxt/include/nxdk_dxt_dll_main.h
-        ddxt/include/xbdm.h
-        ddxt/include/xbdm_err.h
+        <INSTALL_DIR>/lib/xbdm.lib
+        <INSTALL_DIR>/lib/libdynamic_dxt_loader.lib
+        <INSTALL_DIR>/include/command_processor_util.h
+        <INSTALL_DIR>/include/module_registry.h
+        <INSTALL_DIR>/include/nxdk_dxt_dll_main.h
+        <INSTALL_DIR>/include/xbdm.h
+        <INSTALL_DIR>/include/xbdm_err.h
 )
 # The directory of header files for methods exported by the dynamic DXT loader.
 ExternalProject_Get_Property(dyndxt_loader INSTALL_DIR)
