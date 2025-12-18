@@ -57,6 +57,7 @@ typedef enum TracerRequest {
   REQ_DISCARD_UNTIL_FRAME_START,
   REQ_DISCARD_UNTIL_NEXT_FLIP,
   REQ_TRACE_UNTIL_FLIP,
+  REQ_TRACE_UNTIL_FLIP_FROM_ARBITRARY_STATE,
 } TracerRequest;
 
 typedef struct TracerStateMachine {
@@ -90,9 +91,9 @@ typedef struct TracerStateMachine {
 
 //! Describes a callback that may be called before/after a PGRAPH command is
 //! processed.
-typedef void (*PGRAPHCommandCallback)(const PushBufferCommandTraceInfo *info,
-                                      TraceContext *state, StoreAuxData store,
-                                      const AuxConfig *config);
+typedef void (*PGRAPHCommandCallback)(const PushBufferCommandTraceInfo* info,
+                                      TraceContext* state, StoreAuxData store,
+                                      const AuxConfig* config);
 
 typedef struct PGRAPHCommandProcessor {
   //! Whether or not this struct is valid.
@@ -109,7 +110,7 @@ typedef struct PGRAPHCommandProcessor {
 
 typedef struct PGRAPHClassProcessor {
   uint32_t class;
-  PGRAPHCommandProcessor *processors;
+  PGRAPHCommandProcessor* processors;
 } PGRAPHClassProcessor;
 
 static const uint32_t kTag = 0x6E74534D;  // 'ntSM'
@@ -131,13 +132,11 @@ static void Shutdown(void);
 
 static void WaitForStablePushBufferState(void);
 static void DiscardUntilFramebufferFlip(BOOL require_new_frame);
-static void TraceUntilFramebufferFlip(BOOL discard);
+static void TraceUntilFramebufferFlip(BOOL discard, BOOL allow_start_in_frame);
 
-#define HOOK_METHOD(cmd, pre_cb, post_cb) \
-  { TRUE, cmd, pre_cb, post_cb }
+#define HOOK_METHOD(cmd, pre_cb, post_cb) {TRUE, cmd, pre_cb, post_cb}
 
-#define HOOK_END() \
-  { FALSE, 0, NULL, NULL }
+#define HOOK_END() {FALSE, 0, NULL, NULL}
 
 static PGRAPHCommandProcessor kClass97Processors[] = {
     HOOK_METHOD(NV097_CLEAR_SURFACE, NULL, TraceSurfaces),
@@ -154,11 +153,11 @@ static const PGRAPHClassProcessor kPGRAPHProcessorRegistry[] = {
 #undef HOOK_METHOD
 #undef HOOK_END
 
-static void *Allocator(size_t size) {
+static void* Allocator(size_t size) {
   return DmAllocatePoolWithTag(size, kTag);
 }
 
-static void Free(void *block) { return DmFreePool(block); }
+static void Free(void* block) { return DmFreePool(block); }
 
 HRESULT TracerInitialize(
     NotifyStateChangedHandler on_notify_state_changed,
@@ -183,7 +182,7 @@ HRESULT TracerInitialize(
 
   return XBOX_S_OK;
 }
-void TracerGetDefaultConfig(TracerConfig *config) {
+void TracerGetDefaultConfig(TracerConfig* config) {
   config->pgraph_circular_buffer_size = DEFAULT_PGRAPH_BUFFER_SIZE;
   config->aux_circular_buffer_size = DEFAULT_AUX_BUFFER_SIZE;
 
@@ -195,7 +194,7 @@ void TracerGetDefaultConfig(TracerConfig *config) {
   config->aux_tracing_config.texture_capture_enabled = TRUE;
 }
 
-static BOOL AuxCaptureEnabled(const AuxConfig *config) {
+static BOOL AuxCaptureEnabled(const AuxConfig* config) {
   return config->raw_pgraph_capture_enabled ||
          config->raw_pfb_capture_enabled || config->rdi_capture_enabled ||
          config->surface_color_capture_enabled ||
@@ -203,7 +202,7 @@ static BOOL AuxCaptureEnabled(const AuxConfig *config) {
          config->texture_capture_enabled;
 }
 
-HRESULT TracerCreate(const TracerConfig *config) {
+HRESULT TracerCreate(const TracerConfig* config) {
   DbgPrint("TracerCreate: %d", state_machine.state);
 
   if (state_machine.state > STATE_UNINITIALIZED) {
@@ -274,7 +273,7 @@ TracerState TracerGetState(void) {
   return ret;
 }
 
-BOOL TracerGetDMAAddresses(uint32_t *push_addr, uint32_t *pull_addr) {
+BOOL TracerGetDMAAddresses(uint32_t* push_addr, uint32_t* pull_addr) {
   EnterCriticalSection(&state_machine.state_critical_section);
   *push_addr = state_machine.real_dma_push_addr;
   *pull_addr = state_machine.real_dma_pull_addr;
@@ -372,8 +371,9 @@ HRESULT TracerBeginDiscardUntilFlip(BOOL require_new_frame) {
   return XBOX_E_ACCESS_DENIED;
 }
 
-HRESULT TracerTraceCurrentFrame(void) {
-  if (SetRequest(REQ_TRACE_UNTIL_FLIP)) {
+HRESULT TracerTraceCurrentFrame(BOOL allow_partial_frame) {
+  if (SetRequest(allow_partial_frame ? REQ_TRACE_UNTIL_FLIP_FROM_ARBITRARY_STATE
+                                     : REQ_TRACE_UNTIL_FLIP)) {
     return XBOX_S_OK;
   }
   return XBOX_E_ACCESS_DENIED;
@@ -384,7 +384,7 @@ uint32_t TracerLockPGRAPHBuffer(void) {
   return CBAvailable(state_machine.pgraph_buffer);
 }
 
-uint32_t TracerReadPGRAPHBuffer(void *buffer, uint32_t size) {
+uint32_t TracerReadPGRAPHBuffer(void* buffer, uint32_t size) {
   return CBReadAvailable(state_machine.pgraph_buffer, buffer, size);
 }
 //! Releases the lock on the PGRAPH buffer.
@@ -399,7 +399,7 @@ uint32_t TracerLockAuxBuffer(void) {
   return CBAvailable(state_machine.aux_buffer);
 }
 
-uint32_t TracerReadAuxBuffer(void *buffer, uint32_t size) {
+uint32_t TracerReadAuxBuffer(void* buffer, uint32_t size) {
   return CBReadAvailable(state_machine.aux_buffer, buffer, size);
 }
 
@@ -429,6 +429,7 @@ static DWORD __attribute__((stdcall)) TracerThreadMain(
     }
 
     TracerRequest request = GetRequest();
+    BOOL allow_start_in_frame = FALSE;
     switch (request) {
       case REQ_WAIT_FOR_STABLE_PUSH_BUFFER:
         WaitForStablePushBufferState();
@@ -445,8 +446,11 @@ static DWORD __attribute__((stdcall)) TracerThreadMain(
         NotifyRequestProcessed();
         break;
 
+      case REQ_TRACE_UNTIL_FLIP_FROM_ARBITRARY_STATE:
+        allow_start_in_frame = TRUE;
+
       case REQ_TRACE_UNTIL_FLIP: {
-        TraceUntilFramebufferFlip(FALSE);
+        TraceUntilFramebufferFlip(FALSE, allow_start_in_frame);
 
         uint32_t bytes_available = CBAvailable(state_machine.pgraph_buffer);
         if (bytes_available) {
@@ -666,16 +670,16 @@ static void RunFIFO(uint32_t pull_addr_target) {
 }
 
 // Looks up any registered processors for the given PushBufferCommandTraceInfo.
-static void GetMethodProcessors(const PushBufferCommandTraceInfo *method_info,
-                                PGRAPHCommandCallback *pre_callback,
-                                PGRAPHCommandCallback *post_callback) {
+static void GetMethodProcessors(const PushBufferCommandTraceInfo* method_info,
+                                PGRAPHCommandCallback* pre_callback,
+                                PGRAPHCommandCallback* post_callback) {
   *pre_callback = NULL;
   *post_callback = NULL;
   if (!method_info->valid) {
     return;
   }
 
-  const PGRAPHClassProcessor *class_registry = kPGRAPHProcessorRegistry;
+  const PGRAPHClassProcessor* class_registry = kPGRAPHProcessorRegistry;
   while (class_registry->processors &&
          class_registry->class != method_info->graphics_class) {
     ++class_registry;
@@ -685,7 +689,7 @@ static void GetMethodProcessors(const PushBufferCommandTraceInfo *method_info,
     return;
   }
 
-  const PGRAPHCommandProcessor *entry = class_registry->processors;
+  const PGRAPHCommandProcessor* entry = class_registry->processors;
   while (entry->valid) {
     if (entry->command == method_info->command.method) {
       *pre_callback = entry->pre_callback;
@@ -698,8 +702,8 @@ static void GetMethodProcessors(const PushBufferCommandTraceInfo *method_info,
 
 //! Write all of the given data to the given circular buffer.
 static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
-                        CRITICAL_SECTION *critical_section, CircularBuffer cb,
-                        const void *data, uint32_t len,
+                        CRITICAL_SECTION* critical_section, CircularBuffer cb,
+                        const void* data, uint32_t len,
                         uint32_t notify_threshold) {
   PROFILE_INIT();
   PROFILE_START();
@@ -723,8 +727,8 @@ static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
   PROFILE_SEND("WriteBuffer");
 }
 
-static void LogAuxData(const PushBufferCommandTraceInfo *trigger,
-                       AuxDataType type, const void *data, uint32_t len) {
+static void LogAuxData(const PushBufferCommandTraceInfo* trigger,
+                       AuxDataType type, const void* data, uint32_t len) {
   if (!trigger || !data || !len) {
     return;
   }
@@ -740,8 +744,8 @@ static void LogAuxData(const PushBufferCommandTraceInfo *trigger,
 }
 
 static uint32_t ProcessPushBufferCommand(
-    uint32_t *dma_pull_addr, PushBufferCommandTraceInfo *method_info,
-    TraceContext *ctx, BOOL discard, BOOL skip_hooks) {
+    uint32_t* dma_pull_addr, PushBufferCommandTraceInfo* method_info,
+    TraceContext* ctx, BOOL discard, BOOL skip_hooks) {
   method_info->valid = FALSE;
   uint32_t unprocessed_bytes = 0;
 
@@ -816,7 +820,7 @@ static uint32_t ProcessPushBufferCommand(
   return unprocessed_bytes;
 }
 
-static void LogCommand(const PushBufferCommandTraceInfo *info) {
+static void LogCommand(const PushBufferCommandTraceInfo* info) {
   if (!info->valid) {
     return;
   }
@@ -838,7 +842,7 @@ static void LogCommand(const PushBufferCommandTraceInfo *info) {
 //! parameter to `TRUE` if one is found.
 //!
 //! \return FALSE on fatal error, otherwise TRUE.
-static BOOL PeekAheadForFlipStall(BOOL *found, uint32_t dma_pull_addr,
+static BOOL PeekAheadForFlipStall(BOOL* found, uint32_t dma_pull_addr,
                                   uint32_t real_dma_push_addr) {
   // TODO: Handle the case where an inc happens near the end of the
   // buffer.
@@ -876,9 +880,10 @@ static BOOL PeekAheadForFlipStall(BOOL *found, uint32_t dma_pull_addr,
   return TRUE;
 }
 
-static void TraceUntilFramebufferFlip(BOOL discard) {
+static void TraceUntilFramebufferFlip(BOOL discard, BOOL allow_start_in_frame) {
   TracerState current_state = TracerGetState();
-  if (!discard && current_state != STATE_IDLE_NEW_FRAME) {
+  if (!discard && !allow_start_in_frame &&
+      current_state != STATE_IDLE_NEW_FRAME) {
     SetState(STATE_FATAL_NOT_IN_NEW_FRAME_STATE);
     CompleteRequest();
     return;
@@ -1077,5 +1082,5 @@ static void DiscardUntilFramebufferFlip(BOOL require_new_frame) {
     return;
   }
 
-  TraceUntilFramebufferFlip(TRUE);
+  TraceUntilFramebufferFlip(TRUE, FALSE);
 }

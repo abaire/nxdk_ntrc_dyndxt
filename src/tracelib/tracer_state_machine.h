@@ -39,10 +39,10 @@ HRESULT TracerInitialize(
     NotifyBytesAvailableHandler on_aux_buffer_bytes_available);
 
 //! Populates the given TracerConfig with default values.
-void TracerGetDefaultConfig(TracerConfig *config);
+void TracerGetDefaultConfig(TracerConfig* config);
 
 //! Creates a tracer instance with the given config.
-HRESULT TracerCreate(const TracerConfig *config);
+HRESULT TracerCreate(const TracerConfig* config);
 
 //! Requests that the tracer shutdown.
 void TracerShutdown(void);
@@ -51,20 +51,20 @@ TracerState TracerGetState(void);
 
 //! Fetches the last saved DMA addresses. Returns TRUE if they are valid, else
 //! FALSE.
-BOOL TracerGetDMAAddresses(uint32_t *push_addr, uint32_t *pull_addr);
+BOOL TracerGetDMAAddresses(uint32_t* push_addr, uint32_t* pull_addr);
 
 //! True if a request is actively being processed.
 BOOL TracerIsProcessingRequest(void);
 HRESULT TracerBeginWaitForStablePushBufferState(void);
 HRESULT TracerBeginDiscardUntilFlip(BOOL require_new_frame);
-HRESULT TracerTraceCurrentFrame(void);
+HRESULT TracerTraceCurrentFrame(BOOL allow_partial_frame);
 
 //! Locks the PGRAPH buffer to prevent writing, returning the bytes available in
 //! the buffer.
 uint32_t TracerLockPGRAPHBuffer(void);
 //! Copies up to `size` bytes from the PGRAPH buffer into `buffer`, returning
 //! the number of bytes actually copied.
-uint32_t TracerReadPGRAPHBuffer(void *buffer, uint32_t size);
+uint32_t TracerReadPGRAPHBuffer(void* buffer, uint32_t size);
 //! Releases the lock on the PGRAPH buffer.
 void TracerUnlockPGRAPHBuffer(void);
 
@@ -73,7 +73,7 @@ void TracerUnlockPGRAPHBuffer(void);
 uint32_t TracerLockAuxBuffer(void);
 //! Copies up to `size` bytes from the Graphics buffer into `buffer`, returning
 //! the number of bytes actually copied.
-uint32_t TracerReadAuxBuffer(void *buffer, uint32_t size);
+uint32_t TracerReadAuxBuffer(void* buffer, uint32_t size);
 //! Releases the lock on the Graphics buffer.
 void TracerUnlockAuxBuffer(void);
 
