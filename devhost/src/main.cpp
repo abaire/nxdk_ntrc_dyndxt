@@ -101,8 +101,8 @@ static void WaitForRequestComplete() {
 }
 
 #ifdef ENABLE_TRACER_THREAD
-static DWORD __attribute__((stdcall)) TracerThreadMain(
-    LPVOID lpThreadParameter) {
+static DWORD
+    __attribute__((stdcall)) TracerThreadMain(LPVOID lpThreadParameter) {
   while (!has_rendered_frame) {
     Sleep(1);
   }
@@ -149,7 +149,7 @@ static DWORD __attribute__((stdcall)) TracerThreadMain(
   PrintMsg("New frame started!");
 
   request_processed = false;
-  if (!TracerTraceCurrentFrame()) {
+  if (!TracerTraceCurrentFrame(FALSE)) {
     PrintMsg("TracerTraceCurrentFrame failed!");
     TracerShutdown();
     return 1;
