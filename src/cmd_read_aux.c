@@ -6,12 +6,10 @@
 #include "tracelib/tracer_state_machine.h"
 #include "xbdm_util.h"
 
-static SendPrepopulatedBinaryDataContext send_context;
 #define BUFFER_SIZE (1024 * 1024)
-static uint8_t read_buffer[BUFFER_SIZE];
 
-HRESULT HandleReadAux(const char *command, char *response,
-                      uint32_t response_len, CommandContext *ctx) {
+HRESULT HandleReadAux(const char* command, char* response,
+                      uint32_t response_len, CommandContext* ctx) {
   CommandParameters cp;
   int32_t result = CPParseCommandParameters(command, &cp);
   if (result < 0) {
@@ -23,16 +21,30 @@ HRESULT HandleReadAux(const char *command, char *response,
     max_size = max_size > BUFFER_SIZE ? BUFFER_SIZE : max_size;
   }
 
+  uint8_t* buffer = (uint8_t*)DmAllocatePoolWithTag(max_size, 'taxb');
+  if (!buffer) {
+    return XBOX_E_FAIL;
+  }
+
   TracerLockAuxBuffer();
-  uint32_t valid_bytes = TracerReadAuxBuffer(read_buffer + 4, max_size - 4);
+  uint32_t valid_bytes = TracerReadAuxBuffer(buffer + 4, max_size - 4);
   TracerUnlockAuxBuffer();
   if (!valid_bytes) {
+    DmFreePool(buffer);
     return XBOX_E_DATA_NOT_AVAILABLE;
   }
 
-  memcpy(read_buffer, &valid_bytes, 4);
+  memcpy(buffer, &valid_bytes, 4);
 
-  InitializeSendPrepopulatedBinaryDataContexts(ctx, &send_context, read_buffer,
-                                               valid_bytes + 4, FALSE);
+  SendPrepopulatedBinaryDataContext* send_context =
+      (SendPrepopulatedBinaryDataContext*)DmAllocatePoolWithTag(
+          sizeof(SendPrepopulatedBinaryDataContext), 'taxc');
+  if (!send_context) {
+    DmFreePool(buffer);
+    return XBOX_E_FAIL;
+  }
+
+  InitializeSendPrepopulatedBinaryDataContexts(ctx, send_context, buffer,
+                                               valid_bytes + 4, TRUE, TRUE);
   return XBOX_S_BINARY;
 }

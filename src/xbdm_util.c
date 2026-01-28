@@ -7,10 +7,12 @@ static HRESULT_API SendPrepopulatedBufferBinaryData(CommandContext *ctx,
 
 void InitializeSendPrepopulatedBinaryDataContexts(
     CommandContext *ctx, SendPrepopulatedBinaryDataContext *send_context,
-    void *buffer, uint32_t buffer_size, BOOL free_on_complete) {
+    void *buffer, uint32_t buffer_size, BOOL free_buffer_on_complete,
+    BOOL free_context_on_complete) {
   send_context->buffer = buffer;
   send_context->read_offset = 0;
-  send_context->free_buffer_on_complete = free_on_complete;
+  send_context->free_buffer_on_complete = free_buffer_on_complete;
+  send_context->free_self_on_complete = free_context_on_complete;
 
   ctx->buffer = buffer;
   ctx->user_data = send_context;
@@ -29,6 +31,9 @@ static HRESULT_API SendPrepopulatedBufferBinaryData(CommandContext *ctx,
   if (!bytes_to_send) {
     if (send_context->free_buffer_on_complete) {
       DmFreePool(send_context->buffer);
+    }
+    if (send_context->free_self_on_complete) {
+      DmFreePool(send_context);
     }
     return XBOX_S_NO_MORE_DATA;
   }
