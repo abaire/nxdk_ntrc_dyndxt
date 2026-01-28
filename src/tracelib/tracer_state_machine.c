@@ -495,6 +495,8 @@ static void Shutdown(void) {
   DeleteCriticalSection(&state_machine.aux_critical_section);
 }
 
+//! Allows execution to proceed until any pending DMA->CACHE1 operation is
+//! completed.
 static void WaitForStablePushBufferState(void) {
   TracerState current_state = TracerGetState();
   if (current_state == STATE_IDLE_STABLE_PUSH_BUFFER ||
@@ -512,16 +514,17 @@ static void WaitForStablePushBufferState(void) {
   while (TracerGetState() == STATE_WAITING_FOR_STABLE_PUSH_BUFFER) {
     // Stop consuming CACHE entries.
     DisablePGRAPHFIFO();
-    if (!BusyWaitUntilPGRAPHIdleWithTimeout(10 * 1000)) {
-      VERBOSE_PRINT("Timed out waiting for idle\n");
+    if (!BusyWaitUntilPGRAPHIdleWithTimeout(20 * 1000)) {
+      DbgPrint("Timed out waiting for idle\n");
       continue;
     }
 
-    // Kick the pusher so that it fills the CACHE.
+    // Kick the pusher so that it fills CACHE1.
     MaybePopulateFIFOCache(1);
 
-    // Now drain the CACHE.
+    // Now drain CACHE1.
     EnablePGRAPHFIFO();
+    BusyWaitUntilCACHE1Empty();
 
     // Check out where the PB currently is and where it was supposed to go.
     dma_push_addr_real = GetDMAPushAddress();
@@ -545,8 +548,7 @@ static void WaitForStablePushBufferState(void) {
     // So we pause the pusher again to validate our state
     PauseFIFOPusher();
 
-    // TODO: Determine whether a sleep is needed and optimize the value.
-    Sleep(1000);
+    BusyWaitUntilCACHE1Empty();
 
     uint32_t dma_push_addr_check = GetDMAPushAddress();
     uint32_t dma_pull_addr_check = GetDMAPullAddress();

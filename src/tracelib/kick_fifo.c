@@ -3,7 +3,7 @@
 #include "register_defs.h"
 #include "xbox_helper.h"
 
-#define LOOP_CYCLES 64
+#define LOOP_CYCLES 4096
 
 KickResult KickFIFO(uint32_t expected_push) {
   KickResult ret = KICK_BAD_READ_PUSH_ADDR;
@@ -21,11 +21,11 @@ KickResult KickFIFO(uint32_t expected_push) {
   ResumeFIFOPusher();
 
   for (; i < LOOP_CYCLES; ++i) {
-    if (PushBufferEmpty()) {
+    if (DMAPushBufferEmpty()) {
       ret = KICK_OK;
       break;
     }
-    Sleep(1);
+    __asm__ __volatile__("pause");
   }
 
   PauseFIFOPusher();

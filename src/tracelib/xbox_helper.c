@@ -20,6 +20,12 @@ void EnablePGRAPHFIFO(void) {
   WriteDWORD(PGRAPH_FIFO_STATE, state | NV_PGRAPH_FIFO_ACCESS);
 }
 
+void BusyWaitUntilCACHE1Empty(void) {
+  while (!CACHE1Empty()) {
+    __asm__ __volatile__("pause");
+  }
+}
+
 void BusyWaitUntilPGRAPHIdle(void) {
   while (ReadDWORD(PGRAPH_STATUS) & NV_PGRAPH_STATUS_BUSY) {
     __asm__ __volatile__("pause");

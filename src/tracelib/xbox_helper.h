@@ -29,6 +29,8 @@ void WriteDWORD(intptr_t address, uint32_t value);
 
 void DisablePGRAPHFIFO(void);
 void EnablePGRAPHFIFO(void);
+//! Spin waits until the CACHE1 status indicates the cache is empty.
+void BusyWaitUntilCACHE1Empty(void);
 void BusyWaitUntilPGRAPHIdle(void);
 bool BusyWaitUntilPGRAPHIdleWithTimeout(uint32_t timeout_milliseconds);
 
@@ -52,9 +54,17 @@ void GetDMAState(DMAState* result);
 // Returns the PGRAPH graphics class registered for the given subchannel.
 uint32_t FetchGraphicsClassForSubchannel(uint32_t subchannel);
 
+static inline bool CACHE1Empty() {
+  return ReadDWORD(CACHE1_STATUS) & NV_PFIFO_CACHE1_STATUS_LOW_MARK;
+}
+
+static inline bool CACHE1Full() {
+  return ReadDWORD(CACHE1_STATUS) & NV_PFIFO_CACHE1_STATUS_HIGH_MARK;
+}
+
 //! Indicates whether the PFIFO engine considers the DMA buffer to be fully
 //! consumed at the instant of the call.
-static inline bool PushBufferEmpty() {
+static inline bool DMAPushBufferEmpty() {
   uint32_t state = ReadDWORD(CACHE1_DMA_PUSH);
   return state & NV_PFIFO_CACHE1_DMA_PUSH_BUFFER;
 }
