@@ -4,7 +4,9 @@
 #include <stdbool.h>
 #include <windows.h>
 
+#include "register_defs.h"
 #include "tracelib/exchange_dword.h"
+#include "xemu/hw/xbox/nv2a/nv2a_regs.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -49,6 +51,13 @@ void GetDMAState(DMAState* result);
 
 // Returns the PGRAPH graphics class registered for the given subchannel.
 uint32_t FetchGraphicsClassForSubchannel(uint32_t subchannel);
+
+//! Indicates whether the PFIFO engine considers the DMA buffer to be fully
+//! consumed at the instant of the call.
+static inline bool PushBufferEmpty() {
+  uint32_t state = ReadDWORD(CACHE1_DMA_PUSH);
+  return state & NV_PFIFO_CACHE1_DMA_PUSH_BUFFER;
+}
 
 #ifdef __cplusplus
 }  // extern "C"

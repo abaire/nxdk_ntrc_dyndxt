@@ -581,12 +581,12 @@ static void ExchangeDMAPushAddress(uint32_t target) {
   EnterCriticalSection(&state_machine.state_critical_section);
   uint32_t prev_target = state_machine.target_dma_push_addr;
 
-  uint32_t real = ExchangeDWORD(DMA_PUSH_ADDR, target);
+  uint32_t real = ExchangeDWORD(DMA_PUT_ADDR, target);
   state_machine.target_dma_push_addr = target;
 
   // It must point where we pointed previously, otherwise something is broken.
   if (real != prev_target) {
-    uint32_t push_state = ReadDWORD(CACHE_PUSH_STATE);
+    uint32_t push_state = ReadDWORD(CACHE1_DMA_PUSH);
     if (push_state & 0x01) {
       DbgPrint("WARNING: PUT was modified and pusher was already active!\n");
       Sleep(60 * 1000);

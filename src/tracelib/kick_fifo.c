@@ -21,8 +21,7 @@ KickResult KickFIFO(uint32_t expected_push) {
   ResumeFIFOPusher();
 
   for (; i < LOOP_CYCLES; ++i) {
-    uint32_t state = ReadDWORD(CACHE_PUSH_STATE);
-    if (state & NV_PFIFO_CACHE1_DMA_PUSH_BUFFER) {
+    if (PushBufferEmpty()) {
       ret = KICK_OK;
       break;
     }

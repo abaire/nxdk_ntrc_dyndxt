@@ -11,17 +11,18 @@ void WriteDWORD(intptr_t address, uint32_t value) {
 }
 
 void DisablePGRAPHFIFO(void) {
-  uint32_t state = ReadDWORD(PGRAPH_STATE);
-  WriteDWORD(PGRAPH_STATE, state & 0xFFFFFFFE);
+  uint32_t state = ReadDWORD(PGRAPH_FIFO_STATE);
+  WriteDWORD(PGRAPH_FIFO_STATE, state & ~NV_PGRAPH_FIFO_ACCESS);
 }
 
 void EnablePGRAPHFIFO(void) {
-  uint32_t state = ReadDWORD(PGRAPH_STATE);
-  WriteDWORD(PGRAPH_STATE, state | 0x00000001);
+  uint32_t state = ReadDWORD(PGRAPH_FIFO_STATE);
+  WriteDWORD(PGRAPH_FIFO_STATE, state | NV_PGRAPH_FIFO_ACCESS);
 }
 
 void BusyWaitUntilPGRAPHIdle(void) {
-  while (ReadDWORD(PGRAPH_STATUS) & 0x00000001) {
+  while (ReadDWORD(PGRAPH_STATUS) & NV_PGRAPH_STATUS_BUSY) {
+    __asm__ __volatile__("pause");
   }
 }
 
@@ -30,7 +31,7 @@ bool BusyWaitUntilPGRAPHIdleWithTimeout(uint32_t timeout_milliseconds) {
   uint32_t total_time = 0;
 
   do {
-    if (!(ReadDWORD(PGRAPH_STATUS) & 0x00000001)) {
+    if (!(ReadDWORD(PGRAPH_STATUS) & NV_PGRAPH_STATUS_BUSY)) {
       return true;
     }
 
@@ -40,34 +41,35 @@ bool BusyWaitUntilPGRAPHIdleWithTimeout(uint32_t timeout_milliseconds) {
     } else {
       total_time = now - start_time;
     }
+    __asm__ __volatile__("pause");
   } while (total_time < timeout_milliseconds);
 
   return false;
 }
 
 void PauseFIFOPuller(void) {
-  uint32_t state = ReadDWORD(CACHE_PULL_STATE);
-  WriteDWORD(CACHE_PULL_STATE, state & 0xFFFFFFFE);
+  uint32_t state = ReadDWORD(CACHE1_PULL0);
+  WriteDWORD(CACHE1_PULL0, state & ~NV_PFIFO_CACHE1_PUSH0_ACCESS);
 }
 
 void ResumeFIFOPuller(void) {
-  uint32_t state = ReadDWORD(CACHE_PULL_STATE);
-  WriteDWORD(CACHE_PULL_STATE, state | 0x00000001);
+  uint32_t state = ReadDWORD(CACHE1_PULL0);
+  WriteDWORD(CACHE1_PULL0, state | NV_PFIFO_CACHE1_PUSH0_ACCESS);
 }
 
 void PauseFIFOPusher(void) {
-  uint32_t state = ReadDWORD(CACHE_PUSH_STATE);
-  WriteDWORD(CACHE_PUSH_STATE, state & 0xFFFFFFFE);
+  uint32_t state = ReadDWORD(CACHE1_DMA_PUSH);
+  WriteDWORD(CACHE1_DMA_PUSH, state & ~NV_PFIFO_CACHE1_DMA_PUSH_ACCESS);
 }
 
 void ResumeFIFOPusher(void) {
-  uint32_t state = ReadDWORD(CACHE_PUSH_STATE);
-  WriteDWORD(CACHE_PUSH_STATE, state | 0x00000001);
+  uint32_t state = ReadDWORD(CACHE1_DMA_PUSH);
+  WriteDWORD(CACHE1_DMA_PUSH, state | NV_PFIFO_CACHE1_DMA_PUSH_ACCESS);
 }
 
 void BusyWaitUntilPusherIDLE(void) {
-  const uint32_t busy_bit = 1 << 4;
-  while (ReadDWORD(CACHE_PUSH_STATE) & busy_bit) {
+  while (ReadDWORD(CACHE1_DMA_PUSH) & NV_PFIFO_CACHE1_DMA_PUSH_STATE) {
+    __asm__ __volatile__("pause");
   }
 }
 
@@ -79,11 +81,11 @@ void MaybePopulateFIFOCache(uint32_t sleep_milliseconds) {
   PauseFIFOPusher();
 }
 
-uint32_t GetDMAPushAddress(void) { return ReadDWORD(DMA_PUSH_ADDR); }
+uint32_t GetDMAPushAddress(void) { return ReadDWORD(DMA_PUT_ADDR); }
 
-uint32_t GetDMAPullAddress(void) { return ReadDWORD(DMA_PULL_ADDR); }
+uint32_t GetDMAPullAddress(void) { return ReadDWORD(DMA_GET_ADDR); }
 
-void SetDMAPushAddress(uint32_t target) { WriteDWORD(DMA_PUSH_ADDR, target); }
+void SetDMAPushAddress(uint32_t target) { WriteDWORD(DMA_PUT_ADDR, target); }
 
 void GetDMAState(DMAState* state) {
   uint32_t dma_state = ReadDWORD(DMA_STATE);
