@@ -13,7 +13,7 @@ KickResult KickFIFO(uint32_t expected_push) {
       ".intel_syntax noprefix\n"
       "cli\n");
 
-  if (expected_push != GetDMAPushAddress()) {
+  if (expected_push != GetDMAPutAddress()) {
     goto done;
   }
 
@@ -34,7 +34,7 @@ KickResult KickFIFO(uint32_t expected_push) {
     ret = KICK_TIMEOUT;
   }
 
-  if (expected_push != GetDMAPushAddress()) {
+  if (expected_push != GetDMAPutAddress()) {
     ret = KICK_PUSH_MODIFIED_IN_CALL;
   }
 

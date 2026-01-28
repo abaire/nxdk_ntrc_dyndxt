@@ -45,9 +45,9 @@ void BusyWaitUntilPusherIDLE(void);
 //! The pusher will be left in a paused state on exit.
 void MaybePopulateFIFOCache(uint32_t sleep_milliseconds);
 
-uint32_t GetDMAPushAddress(void);
-uint32_t GetDMAPullAddress(void);
-void SetDMAPushAddress(uint32_t target);
+uint32_t GetDMAPutAddress(void);
+uint32_t GetDMAGetAddress(void);
+void SetDMAPutAddress(uint32_t target);
 
 void GetDMAState(DMAState* result);
 

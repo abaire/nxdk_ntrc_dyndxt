@@ -478,7 +478,7 @@ static DWORD __attribute__((stdcall)) TracerThreadMain(
 static void Shutdown(void) {
   if (state_machine.dma_addresses_valid) {
     // Recover the real address
-    SetDMAPushAddress(state_machine.real_dma_push_addr);
+    SetDMAPutAddress(state_machine.real_dma_push_addr);
     state_machine.dma_addresses_valid = FALSE;
   }
 
@@ -527,20 +527,22 @@ static void WaitForStablePushBufferState(void) {
     BusyWaitUntilCACHE1Empty();
 
     // Check out where the PB currently is and where it was supposed to go.
-    dma_push_addr_real = GetDMAPushAddress();
-    dma_pull_addr = GetDMAPullAddress();
+    dma_push_addr_real = GetDMAPutAddress();
+    dma_pull_addr = GetDMAGetAddress();
 
     // Check if we have any methods left to run and skip those.
     DMAState dma_state;
     GetDMAState(&dma_state);
     dma_pull_addr += dma_state.method_count * 4;
 
-    // Hide all commands from the PB by setting PUT = GET.
+    // Hide any additional commands from PFIFO by setting the put address to the
+    // calculated end.
     uint32_t dma_push_addr_target = dma_pull_addr;
-    SetDMAPushAddress(dma_push_addr_target);
+    SetDMAPutAddress(dma_push_addr_target);
 
-    // Resume pusher - The PB can't run yet, as it has no commands to process.
+    // Resume pusher and let it fully process commands up to the target address.
     ResumeFIFOPusher();
+    BusyWaitUntilCACHE1Empty();
 
     // We might get issues where the pusher missed our PUT (miscalculated).
     // This can happen as `dma_method_count` is not the most accurate.
@@ -548,10 +550,8 @@ static void WaitForStablePushBufferState(void) {
     // So we pause the pusher again to validate our state
     PauseFIFOPusher();
 
-    BusyWaitUntilCACHE1Empty();
-
-    uint32_t dma_push_addr_check = GetDMAPushAddress();
-    uint32_t dma_pull_addr_check = GetDMAPullAddress();
+    uint32_t dma_push_addr_check = GetDMAPutAddress();
+    uint32_t dma_pull_addr_check = GetDMAGetAddress();
 
     // We want the PB to be empty.
     if (dma_pull_addr_check != dma_push_addr_check) {
@@ -605,7 +605,7 @@ static void RunFIFO(uint32_t pull_addr_target) {
   // address.
   ExchangeDMAPushAddress(pull_addr_target);
   // FIXME: we can avoid this read in some cases, as we should know where we are
-  state_machine.real_dma_pull_addr = GetDMAPullAddress();
+  state_machine.real_dma_pull_addr = GetDMAGetAddress();
 
   if (state_machine.real_dma_pull_addr == pull_addr_target) {
     VERBOSE_PRINT(
@@ -643,7 +643,7 @@ static void RunFIFO(uint32_t pull_addr_target) {
     // FIXME: Avoid running bad code if PUT was modified during this command.
     ExchangeDMAPushAddress(pull_addr_target);
 
-    // FIXME: xemu does not seem to implement the CACHE behavior
+    // FIXME: xemu does not implement the CACHE behavior
     // This leads to an infinite loop as the kick fails to populate the cache.
     KickResult result = KickFIFO(pull_addr_target);
     if (result != KICK_OK) {
@@ -654,14 +654,15 @@ static void RunFIFO(uint32_t pull_addr_target) {
       }
     }
 
-    // Run the commands we have moved to CACHE, by enabling PGRAPH.
+    // Run the commands we have moved to CACHE by enabling PGRAPH.
     EnablePGRAPHFIFO();
+    BusyWaitUntilCACHE1Empty();
 
     // TODO: Verify that a simple yield is sufficient. This used to sleep 10ms.
     SwitchToThread();
 
     // Get the updated PB address.
-    uint32_t new_get_addr = GetDMAPullAddress();
+    uint32_t new_get_addr = GetDMAGetAddress();
     if (new_get_addr == state_machine.real_dma_pull_addr) {
       ++iterations_with_no_change;
     } else {
@@ -997,7 +998,7 @@ static void TraceUntilFramebufferFlip(BOOL discard, BOOL allow_start_in_frame) {
 
     // Verify we are where we think we are
     if (!bytes_queued) {
-      uint32_t dma_pull_addr_real = GetDMAPullAddress();
+      uint32_t dma_pull_addr_real = GetDMAGetAddress();
       if (dma_pull_addr_real != dma_pull_addr) {
         DbgPrint(
             "ERROR: Corrupt state. HW (0x%08X) is not at parser (0x%08X)\n",
@@ -1031,7 +1032,7 @@ static void TraceUntilFramebufferFlip(BOOL discard, BOOL allow_start_in_frame) {
           DbgPrint(
               "Stall detected, attempting to populate FIFO: Real push: 0x%08X, "
               "live push: 0x%08X, live pull: 0x%08X\n",
-              real_dma_push_addr, GetDMAPushAddress(), GetDMAPullAddress());
+              real_dma_push_addr, GetDMAPutAddress(), GetDMAGetAddress());
           PROFILE_START();
           // NOTE: EnableFIFO + ResumePusher + SwitchToThread() + PausePusher +
           // DisableFIFO is insufficient to fix this problem.

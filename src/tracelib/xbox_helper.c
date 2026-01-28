@@ -87,11 +87,11 @@ void MaybePopulateFIFOCache(uint32_t sleep_milliseconds) {
   PauseFIFOPusher();
 }
 
-uint32_t GetDMAPushAddress(void) { return ReadDWORD(DMA_PUT_ADDR); }
+uint32_t GetDMAPutAddress(void) { return ReadDWORD(DMA_PUT_ADDR); }
 
-uint32_t GetDMAPullAddress(void) { return ReadDWORD(DMA_GET_ADDR); }
+uint32_t GetDMAGetAddress(void) { return ReadDWORD(DMA_GET_ADDR); }
 
-void SetDMAPushAddress(uint32_t target) { WriteDWORD(DMA_PUT_ADDR, target); }
+void SetDMAPutAddress(uint32_t target) { WriteDWORD(DMA_PUT_ADDR, target); }
 
 void GetDMAState(DMAState* state) {
   uint32_t dma_state = ReadDWORD(DMA_STATE);
