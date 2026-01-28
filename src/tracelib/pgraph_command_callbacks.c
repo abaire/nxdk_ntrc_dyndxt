@@ -54,7 +54,7 @@ static const uint32_t kTag = 0x6E744343;  // 'ntCC'
 //! ADDR_AGPMEM, which is guaranteed to be linear (and thus may be slower than
 //! tiled ADDR_FBMEM but can be manipulated directly).
 static const uint32_t kAGPMemoryBase = 0xF0000000;
-#define AGP_ADDR(a) (const uint8_t *)(kAGPMemoryBase | (a))
+#define AGP_ADDR(a) (const uint8_t*)(kAGPMemoryBase | (a))
 
 //! Value added to contiguous memory addresses to access as framebuffer memory.
 // static const uint32_t kFramebufferMemoryBase = 0x80000000;
@@ -78,8 +78,8 @@ typedef struct TextureParameters {
   BOOL swizzled;
 } TextureParameters;
 
-static void ApplyAntiAliasingFactor(uint32_t antialiasing_mode, uint32_t *x,
-                                    uint32_t *y) {
+static void ApplyAntiAliasingFactor(uint32_t antialiasing_mode, uint32_t* x,
+                                    uint32_t* y) {
   switch (antialiasing_mode) {
     case 0:
       return;
@@ -98,7 +98,7 @@ static void ApplyAntiAliasingFactor(uint32_t antialiasing_mode, uint32_t *x,
   }
 }
 
-static void ReadTextureParameters(TextureParameters *params) {
+static void ReadTextureParameters(TextureParameters* params) {
   params->color_pitch = ReadDWORD(0xFD400858);
   params->depth_pitch = ReadDWORD(0xFD40085C);
   params->color_offset = ReadDWORD(0xFD400828);
@@ -150,11 +150,11 @@ static void ReadTextureParameters(TextureParameters *params) {
 }
 
 //! Stores the PGRAPH region.
-static void StorePGRAPH(const PushBufferCommandTraceInfo *info,
+static void StorePGRAPH(const PushBufferCommandTraceInfo* info,
                         StoreAuxData store) {
 #define PGRAPH_REGION 0xFD400000
 #define PGRAPH_REGION_SIZE 0x2000
-  uint8_t *buffer = (uint8_t *)DmAllocatePoolWithTag(PGRAPH_REGION_SIZE, kTag);
+  uint8_t* buffer = (uint8_t*)DmAllocatePoolWithTag(PGRAPH_REGION_SIZE, kTag);
   if (!buffer) {
     DbgPrint("Error: Failed to allocate buffer when reading PGRAPH region.");
     return;
@@ -162,15 +162,15 @@ static void StorePGRAPH(const PushBufferCommandTraceInfo *info,
 
   // 0xFD400200 hangs Xbox, but skipping 0x200 - 0x400 works.
   // TODO: Needs further testing which regions work.
-  uint8_t *write_ptr = buffer;
-  mmx_memcpy(write_ptr, (uint8_t *)PGRAPH_REGION, 0x200);
+  uint8_t* write_ptr = buffer;
+  mmx_memcpy(write_ptr, (uint8_t*)PGRAPH_REGION, 0x200);
   write_ptr += 0x200;
 
   // Null out the unreadable bytes.
   memset(write_ptr, 0, 0x200);
   write_ptr += 0x200;
 
-  mmx_memcpy(write_ptr, (uint8_t *)(PGRAPH_REGION + 0x400),
+  mmx_memcpy(write_ptr, (uint8_t*)(PGRAPH_REGION + 0x400),
              PGRAPH_REGION_SIZE - 0x400);
 
   store(info, ADT_PGRAPH_DUMP, buffer, 0x2000);
@@ -178,17 +178,17 @@ static void StorePGRAPH(const PushBufferCommandTraceInfo *info,
 }
 
 //! Stores the PFB region.
-static void StorePFB(const PushBufferCommandTraceInfo *info,
+static void StorePFB(const PushBufferCommandTraceInfo* info,
                      StoreAuxData store) {
 #define PFB_REGION 0xFD100000
 #define PFB_REGION_SIZE 0x1000
-  uint8_t *buffer = (uint8_t *)DmAllocatePoolWithTag(PFB_REGION_SIZE, kTag);
+  uint8_t* buffer = (uint8_t*)DmAllocatePoolWithTag(PFB_REGION_SIZE, kTag);
   if (!buffer) {
     DbgPrint("Error: Failed to allocate buffer when reading PFB region.");
     return;
   }
 
-  mmx_memcpy(buffer, (uint8_t *)PFB_REGION, PFB_REGION_SIZE);
+  mmx_memcpy(buffer, (uint8_t*)PFB_REGION, PFB_REGION_SIZE);
 
   store(info, ADT_PFB_DUMP, buffer, 0x2000);
   DmFreePool(buffer);
@@ -198,10 +198,10 @@ static void StorePFB(const PushBufferCommandTraceInfo *info,
 #define NV10_PGRAPH_RDI_DATA 0xFD400754
 
 //! Stores RDI data.
-static void StoreRDI(const PushBufferCommandTraceInfo *info, StoreAuxData store,
+static void StoreRDI(const PushBufferCommandTraceInfo* info, StoreAuxData store,
                      uint32_t offset, uint32_t count) {
   uint32_t buffer_size = sizeof(RDIHeader) + 4 * count;
-  uint8_t *buffer = (uint8_t *)DmAllocatePoolWithTag(buffer_size, kTag);
+  uint8_t* buffer = (uint8_t*)DmAllocatePoolWithTag(buffer_size, kTag);
   if (!buffer) {
     DbgPrint(
         "Error: Failed to allocate buffer when reading %u RDI values from "
@@ -210,10 +210,10 @@ static void StoreRDI(const PushBufferCommandTraceInfo *info, StoreAuxData store,
     return;
   }
 
-  RDIHeader *header = (RDIHeader *)buffer;
+  RDIHeader* header = (RDIHeader*)buffer;
   header->offset = offset;
   header->count = count;
-  uint32_t *write_ptr = (uint32_t *)(buffer + sizeof(*header));
+  uint32_t* write_ptr = (uint32_t*)(buffer + sizeof(*header));
 
   // FIXME: Assert pusher access is disabled
   // FIXME: Assert PGRAPH idle
@@ -242,13 +242,13 @@ static void StoreRDI(const PushBufferCommandTraceInfo *info, StoreAuxData store,
   DmFreePool(buffer);
 }
 
-static void StoreSurface(const PushBufferCommandTraceInfo *info,
+static void StoreSurface(const PushBufferCommandTraceInfo* info,
                          StoreAuxData store, SurfaceType type,
                          uint32_t surface_format, uint32_t surface_offset,
                          uint32_t width, uint32_t height, uint32_t pitch,
                          uint32_t clip_x, uint32_t clip_y, uint32_t clip_w,
                          uint32_t clip_h, BOOL swizzle, uint32_t swizzle_param,
-                         const char *description) {
+                         const char* description) {
   uint32_t len = pitch * (clip_y + height);
   if (!len) {
     DbgPrint(
@@ -260,13 +260,13 @@ static void StoreSurface(const PushBufferCommandTraceInfo *info,
   uint32_t description_len = strlen(description);
   uint32_t buffer_size = sizeof(SurfaceHeader) + description_len + len;
 
-  uint8_t *buffer = (uint8_t *)DmAllocatePoolWithTag(buffer_size, kTag);
+  uint8_t* buffer = (uint8_t*)DmAllocatePoolWithTag(buffer_size, kTag);
   if (!buffer) {
     DbgPrint("Error: Failed to allocate buffer when reading surface %d.", type);
     return;
   }
 
-  SurfaceHeader *header = (SurfaceHeader *)buffer;
+  SurfaceHeader* header = (SurfaceHeader*)buffer;
   header->type = type;
   header->format = surface_format;
   header->len = len;
@@ -284,7 +284,7 @@ static void StoreSurface(const PushBufferCommandTraceInfo *info,
   header->save_context.draw_index = info->draw_index;
   header->save_context.surface_dump_index = info->surface_dump_index;
 
-  uint8_t *write_ptr = buffer + sizeof(*header);
+  uint8_t* write_ptr = buffer + sizeof(*header);
   // null terminator is intentionally omitted.
   memcpy(write_ptr, description, description_len);  // NOLINT
   write_ptr += description_len;
@@ -301,8 +301,8 @@ static void StoreSurface(const PushBufferCommandTraceInfo *info,
   DmFreePool(buffer);
 }
 
-void TraceSurfaces(const PushBufferCommandTraceInfo *info, TraceContext *ctx,
-                   StoreAuxData store, const AuxConfig *config) {
+void TraceSurfaces(const PushBufferCommandTraceInfo* info, TraceContext* ctx,
+                   StoreAuxData store, const AuxConfig* config) {
   if (config->raw_pgraph_capture_enabled) {
     StorePGRAPH(info, store);
   }
@@ -444,22 +444,22 @@ static const struct TextureFormatInfo kTextureFormatInfo[] = {
     {0, 0, FALSE, FALSE},
 };
 
-static const struct TextureFormatInfo *GetFormatInfo(uint32_t texture_format) {
-  const struct TextureFormatInfo *ret = kTextureFormatInfo;
+static const struct TextureFormatInfo* GetFormatInfo(uint32_t texture_format) {
+  const struct TextureFormatInfo* ret = kTextureFormatInfo;
   while (ret->bytes_per_pixel && ret->format != texture_format) {
     ++ret;
   }
   return ret;
 }
 
-static void StoreTextureLayer(const PushBufferCommandTraceInfo *info,
+static void StoreTextureLayer(const PushBufferCommandTraceInfo* info,
                               StoreAuxData store, uint32_t stage,
                               uint32_t layer, uint32_t adjusted_offset,
                               uint32_t width, uint32_t height, uint32_t depth,
                               uint32_t pitch, uint32_t format_register,
                               uint32_t format, uint32_t control0,
                               uint32_t control1, uint32_t image_rect) {
-  const struct TextureFormatInfo *format_info = GetFormatInfo(format);
+  const struct TextureFormatInfo* format_info = GetFormatInfo(format);
   if (!format_info->bytes_per_pixel) {
     DbgPrint("Error: failed to look up texture format 0x%X\n", format);
     return;
@@ -496,14 +496,14 @@ static void StoreTextureLayer(const PushBufferCommandTraceInfo *info,
   }
   uint32_t buffer_size = sizeof(TextureHeader) + len;
 
-  uint8_t *buffer = (uint8_t *)DmAllocatePoolWithTag(buffer_size, kTag);
+  uint8_t* buffer = (uint8_t*)DmAllocatePoolWithTag(buffer_size, kTag);
   if (!buffer) {
     DbgPrint("Error: Failed to allocate buffer when reading texture %u:%u.",
              stage, layer);
     return;
   }
 
-  TextureHeader *header = (TextureHeader *)buffer;
+  TextureHeader* header = (TextureHeader*)buffer;
   header->stage = stage;
   header->layer = layer;
 
@@ -521,14 +521,14 @@ static void StoreTextureLayer(const PushBufferCommandTraceInfo *info,
   header->control1 = control1;
   header->image_rect = image_rect;
 
-  uint8_t *write_ptr = buffer + sizeof(*header);
+  uint8_t* write_ptr = buffer + sizeof(*header);
   mmx_memcpy(write_ptr, AGP_ADDR(adjusted_offset), len);
 
   store(info, ADT_TEXTURE, buffer, buffer_size);
   DmFreePool(buffer);
 }
 
-static void StoreTextureStage(const PushBufferCommandTraceInfo *info,
+static void StoreTextureStage(const PushBufferCommandTraceInfo* info,
                               StoreAuxData store, uint32_t stage) {
   // Verify that the stage is enabled.
   uint32_t reg_offset = stage * 4;
@@ -564,14 +564,14 @@ static void StoreTextureStage(const PushBufferCommandTraceInfo *info,
   }
 }
 
-void TraceTextures(const PushBufferCommandTraceInfo *info, StoreAuxData store) {
+void TraceTextures(const PushBufferCommandTraceInfo* info, StoreAuxData store) {
   for (uint32_t i = 0; i < 4; ++i) {
     StoreTextureStage(info, store, i);
   }
 }
 
-void TraceBegin(const PushBufferCommandTraceInfo *info, TraceContext *ctx,
-                StoreAuxData store, const AuxConfig *config) {
+void TraceBegin(const PushBufferCommandTraceInfo* info, TraceContext* ctx,
+                StoreAuxData store, const AuxConfig* config) {
   if (!config->texture_capture_enabled) {
     return;
   }
@@ -586,13 +586,13 @@ void TraceBegin(const PushBufferCommandTraceInfo *info, TraceContext *ctx,
     return;
   }
 
-  DbgPrint("Begin %d %u %u\n", info->packet_index, info->draw_index,
-           info->surface_dump_index);
+  DbgPrint("BEGIN - Packet: %d Draw: %u Surface: %u\n", info->packet_index,
+           info->draw_index, info->surface_dump_index);
   TraceTextures(info, store);
 }
 
-void TraceEnd(const PushBufferCommandTraceInfo *info, TraceContext *ctx,
-              StoreAuxData store, const AuxConfig *config) {
+void TraceEnd(const PushBufferCommandTraceInfo* info, TraceContext* ctx,
+              StoreAuxData store, const AuxConfig* config) {
   if (!config->surface_depth_capture_enabled &&
       !config->surface_color_capture_enabled &&
       !config->raw_pgraph_capture_enabled && !config->raw_pfb_capture_enabled) {
@@ -608,8 +608,8 @@ void TraceEnd(const PushBufferCommandTraceInfo *info, TraceContext *ctx,
     return;
   }
 
-  DbgPrint("End %d %u %u\n", info->packet_index, info->draw_index,
-           info->surface_dump_index);
+  DbgPrint("END - Packet: %d Draw: %u Surface: %u\n", info->packet_index,
+           info->draw_index, info->surface_dump_index);
   ++ctx->draw_index;
   TraceSurfaces(info, ctx, store, config);
 }
