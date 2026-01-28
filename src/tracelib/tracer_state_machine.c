@@ -10,11 +10,18 @@
 #include "xbox_helper.h"
 
 #define VERBOSE_DEBUG
+// #define EXTRA_VERBOSE_PRINT
 
 #ifdef VERBOSE_DEBUG
 #define VERBOSE_PRINT(c) DbgPrint c
 #else
 #define VERBOSE_PRINT(c)
+#endif
+
+#ifdef EXTRA_VERBOSE_PRINT
+#define EXTRA_VERBOSE_PRINT(c) DbgPrint c
+#else
+#define EXTRA_VERBOSE_PRINT(c)
 #endif
 
 // #define ENABLE_PROFILING
@@ -737,7 +744,7 @@ static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
       }
     }
     if (len) {
-      VERBOSE_PRINT(("WriteBuffer: Circular buffer full, sleeping...\n"));
+      EXTRA_VERBOSE_PRINT(("WriteBuffer: Circular buffer full, sleeping...\n"));
       SwitchToThread();
     }
   }
