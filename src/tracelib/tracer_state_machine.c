@@ -9,7 +9,7 @@
 #include "xbdm.h"
 #include "xbox_helper.h"
 
-// #define VERBOSE_DEBUG
+#define VERBOSE_DEBUG
 
 #ifdef VERBOSE_DEBUG
 #define VERBOSE_PRINT(c) DbgPrint c
@@ -508,40 +508,49 @@ static void WaitForStablePushBufferState(void) {
 
   SetState(STATE_WAITING_FOR_STABLE_PUSH_BUFFER);
 
-  uint32_t dma_pull_addr = 0;
+  uint32_t dma_get_addr = 0;
   uint32_t dma_push_addr_real = 0;
 
   while (TracerGetState() == STATE_WAITING_FOR_STABLE_PUSH_BUFFER) {
     // Stop consuming CACHE entries.
+    VERBOSE_PRINT(("DisablePGRAPHFIFO\n"));
     DisablePGRAPHFIFO();
+    VERBOSE_PRINT(("BusyWaitUntilPGRAPHIdleWithTimeout\n"));
     if (!BusyWaitUntilPGRAPHIdleWithTimeout(20 * 1000)) {
       DbgPrint("Timed out waiting for idle\n");
       continue;
     }
 
+    VERBOSE_PRINT(("MaybePopulateFIFOCache\n"));
     // Kick the pusher so that it fills CACHE1.
     MaybePopulateFIFOCache(1);
 
     // Now drain CACHE1.
+    VERBOSE_PRINT(("EnablePGRAPHFIFO\n"));
     EnablePGRAPHFIFO();
+    VERBOSE_PRINT(("BusyWaitUntilCACHE1Empty\n"));
     BusyWaitUntilCACHE1Empty();
 
     // Check out where the PB currently is and where it was supposed to go.
     dma_push_addr_real = GetDMAPutAddress();
-    dma_pull_addr = GetDMAGetAddress();
+    dma_get_addr = GetDMAGetAddress();
 
     // Check if we have any methods left to run and skip those.
     DMAState dma_state;
     GetDMAState(&dma_state);
-    dma_pull_addr += dma_state.method_count * 4;
+    dma_get_addr += dma_state.method_count * 4;
 
     // Hide any additional commands from PFIFO by setting the put address to the
     // calculated end.
-    uint32_t dma_push_addr_target = dma_pull_addr;
-    SetDMAPutAddress(dma_push_addr_target);
+    uint32_t dma_put_addr_target = dma_get_addr;
+    SetDMAPutAddress(dma_put_addr_target);
+
+    VERBOSE_PRINT(
+        ("ResumeFIFOPusher: DMA_PUT = 0x%08X\n", dma_put_addr_target));
 
     // Resume pusher and let it fully process commands up to the target address.
     ResumeFIFOPusher();
+    VERBOSE_PRINT(("BusyWaitUntilCACHE1Empty\n"));
     BusyWaitUntilCACHE1Empty();
 
     // We might get issues where the pusher missed our PUT (miscalculated).
@@ -561,21 +570,23 @@ static void WaitForStablePushBufferState(void) {
     }
 
     // Ensure that we are at the correct offset
-    if (dma_push_addr_check != dma_push_addr_target) {
+    if (dma_push_addr_check != dma_put_addr_target) {
       DbgPrint("WARNING: PUT was modified; got 0x%08X but expected 0x%08X!\n",
-               dma_push_addr_check, dma_push_addr_target);
+               dma_push_addr_check, dma_put_addr_target);
       continue;
     }
 
-    SaveDMAAddresses(dma_push_addr_real, dma_pull_addr);
-    state_machine.target_dma_push_addr = dma_pull_addr;
+    VERBOSE_PRINT(("Wait for idle completed!\n"));
+
+    SaveDMAAddresses(dma_push_addr_real, dma_get_addr);
+    state_machine.target_dma_push_addr = dma_get_addr;
     SetState(STATE_IDLE_STABLE_PUSH_BUFFER);
     CompleteRequest();
     return;
   }
 
   DbgPrint("WARNING: Wait for idle aborted, restoring PFIFO state...\n");
-  SaveDMAAddresses(dma_push_addr_real, dma_pull_addr);
+  SaveDMAAddresses(dma_push_addr_real, dma_get_addr);
 }
 
 // Sets the DMA_PUSH_ADDR to the given target, storing the old value.
@@ -632,8 +643,8 @@ static void RunFIFO(uint32_t pull_addr_target) {
         ("RunFIFO: State pull=0x%08X, target=0x%08X push=0x%08X - Live: "
          "pull=0x%X push=0x%X\n",
          state_machine.real_dma_pull_addr, pull_addr_target,
-         state_machine.real_dma_push_addr, GetDMAPullAddress(),
-         GetDMAPushAddress()));
+         state_machine.real_dma_push_addr, GetDMAGetAddress(),
+         GetDMAPutAddress()));
 
     // Disable PGRAPH, so it can't run anything from CACHE.
     DisablePGRAPHFIFO();
@@ -987,7 +998,7 @@ static void TraceUntilFramebufferFlip(BOOL discard, BOOL allow_start_in_frame) {
         VERBOSE_PRINT(
             ("Tracer: No PGRAPH commands available. Real push: 0x%08X, live "
              "push: 0x%08X, live pull: 0x%08X\n",
-             real_dma_push_addr, GetDMAPushAddress(), GetDMAPullAddress()));
+             real_dma_push_addr, GetDMAPutAddress(), GetDMAGetAddress()));
       }
 
       PROFILE_START();
@@ -1049,7 +1060,7 @@ static void TraceUntilFramebufferFlip(BOOL discard, BOOL allow_start_in_frame) {
           VERBOSE_PRINT((
               "Post stall workaround: Real push: live push: 0x%08X, live pull: "
               "0x%08X\n",
-              GetDMAPushAddress(), GetDMAPullAddress()));
+              GetDMAPutAddress(), GetDMAGetAddress()));
         }
       } else {
         last_push_addr = real_dma_push_addr;
