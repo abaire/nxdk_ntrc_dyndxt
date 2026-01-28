@@ -512,7 +512,10 @@ static void WaitForStablePushBufferState(void) {
   while (TracerGetState() == STATE_WAITING_FOR_STABLE_PUSH_BUFFER) {
     // Stop consuming CACHE entries.
     DisablePGRAPHFIFO();
-    BusyWaitUntilPGRAPHIdle();
+    if (!BusyWaitUntilPGRAPHIdleWithTimeout(10 * 1000)) {
+      VERBOSE_PRINT("Timed out waiting for idle\n");
+      continue;
+    }
 
     // Kick the pusher so that it fills the CACHE.
     MaybePopulateFIFOCache(1);

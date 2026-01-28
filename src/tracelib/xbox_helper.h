@@ -1,12 +1,14 @@
 #ifndef NV2A_TRACE_XBOX_HELPER_H
 #define NV2A_TRACE_XBOX_HELPER_H
 
+#include <stdbool.h>
 #include <windows.h>
 
 #include "tracelib/exchange_dword.h"
 
 #ifdef __cplusplus
 extern "C" {
+
 #endif
 
 typedef struct DMAState {
@@ -26,6 +28,7 @@ void WriteDWORD(intptr_t address, uint32_t value);
 void DisablePGRAPHFIFO(void);
 void EnablePGRAPHFIFO(void);
 void BusyWaitUntilPGRAPHIdle(void);
+bool BusyWaitUntilPGRAPHIdleWithTimeout(uint32_t timeout_milliseconds);
 
 void PauseFIFOPuller(void);
 void ResumeFIFOPuller(void);
@@ -42,7 +45,7 @@ uint32_t GetDMAPushAddress(void);
 uint32_t GetDMAPullAddress(void);
 void SetDMAPushAddress(uint32_t target);
 
-void GetDMAState(DMAState *result);
+void GetDMAState(DMAState* result);
 
 // Returns the PGRAPH graphics class registered for the given subchannel.
 uint32_t FetchGraphicsClassForSubchannel(uint32_t subchannel);

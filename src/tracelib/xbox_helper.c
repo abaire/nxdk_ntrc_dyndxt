@@ -1,11 +1,13 @@
 #include "xbox_helper.h"
 
+#include <windows.h>
+
 #include "register_defs.h"
 
-uint32_t ReadDWORD(intptr_t address) { return *(volatile uint32_t *)(address); }
+uint32_t ReadDWORD(intptr_t address) { return *(volatile uint32_t*)(address); }
 
 void WriteDWORD(intptr_t address, uint32_t value) {
-  *(volatile uint32_t *)(address) = value;
+  *(volatile uint32_t*)(address) = value;
 }
 
 void DisablePGRAPHFIFO(void) {
@@ -21,6 +23,26 @@ void EnablePGRAPHFIFO(void) {
 void BusyWaitUntilPGRAPHIdle(void) {
   while (ReadDWORD(PGRAPH_STATUS) & 0x00000001) {
   }
+}
+
+bool BusyWaitUntilPGRAPHIdleWithTimeout(uint32_t timeout_milliseconds) {
+  uint32_t start_time = GetTickCount();
+  uint32_t total_time = 0;
+
+  do {
+    if (!(ReadDWORD(PGRAPH_STATUS) & 0x00000001)) {
+      return true;
+    }
+
+    uint32_t now = GetTickCount();
+    if (now < start_time) {
+      total_time = now + 0xFFFFFFFF - start_time;
+    } else {
+      total_time = now - start_time;
+    }
+  } while (total_time < timeout_milliseconds);
+
+  return false;
 }
 
 void PauseFIFOPuller(void) {
@@ -63,7 +85,7 @@ uint32_t GetDMAPullAddress(void) { return ReadDWORD(DMA_PULL_ADDR); }
 
 void SetDMAPushAddress(uint32_t target) { WriteDWORD(DMA_PUSH_ADDR, target); }
 
-void GetDMAState(DMAState *state) {
+void GetDMAState(DMAState* state) {
   uint32_t dma_state = ReadDWORD(DMA_STATE);
 
   state->non_increasing = (dma_state & 0x01) != 0;
