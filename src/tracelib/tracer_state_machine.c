@@ -9,7 +9,7 @@
 #include "xbdm.h"
 #include "xbox_helper.h"
 
-#define VERBOSE_DEBUG
+// #define VERBOSE_DEBUG
 // #define EXTRA_VERBOSE_PRINT
 
 #ifdef VERBOSE_DEBUG
@@ -459,12 +459,18 @@ static DWORD __attribute__((stdcall)) TracerThreadMain(
       case REQ_TRACE_UNTIL_FLIP: {
         TraceUntilFramebufferFlip(FALSE, allow_start_in_frame);
 
+        EnterCriticalSection(&state_machine.pgraph_critical_section);
         uint32_t bytes_available = CBAvailable(state_machine.pgraph_buffer);
+        LeaveCriticalSection(&state_machine.pgraph_critical_section);
+
         if (bytes_available) {
           state_machine.on_pgraph_buffer_bytes_available(bytes_available);
         }
 
+        EnterCriticalSection(&state_machine.aux_critical_section);
         bytes_available = CBAvailable(state_machine.aux_buffer);
+        LeaveCriticalSection(&state_machine.aux_critical_section);
+
         if (bytes_available) {
           state_machine.on_aux_buffer_bytes_available(bytes_available);
         }
