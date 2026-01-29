@@ -444,6 +444,26 @@ static const struct TextureFormatInfo kTextureFormatInfo[] = {
     {0, 0, FALSE, FALSE},
 };
 
+#define PS_TEXTUREMODES_NONE 0x00L
+#define PS_TEXTUREMODES_PROJECT2D 0x01L
+#define PS_TEXTUREMODES_PROJECT3D 0x02L
+#define PS_TEXTUREMODES_CUBEMAP 0x03L
+#define PS_TEXTUREMODES_PASSTHRU 0x04L
+#define PS_TEXTUREMODES_CLIPPLANE 0x05L
+#define PS_TEXTUREMODES_BUMPENVMAP 0x06L
+#define PS_TEXTUREMODES_BUMPENVMAP_LUM 0x07L
+#define PS_TEXTUREMODES_BRDF 0x08L
+#define PS_TEXTUREMODES_DOT_ST 0x09L
+#define PS_TEXTUREMODES_DOT_ZW 0x0aL
+#define PS_TEXTUREMODES_DOT_RFLCT_DIFF 0x0bL
+#define PS_TEXTUREMODES_DOT_RFLCT_SPEC 0x0cL
+#define PS_TEXTUREMODES_DOT_STR_3D 0x0dL
+#define PS_TEXTUREMODES_DOT_STR_CUBE 0x0eL
+#define PS_TEXTUREMODES_DPNDNT_AR 0x0fL
+#define PS_TEXTUREMODES_DPNDNT_GB 0x10L
+#define PS_TEXTUREMODES_DOTPRODUCT 0x11L
+#define PS_TEXTUREMODES_DOT_RFLCT_SPEC_CONST 0x12L
+
 static const struct TextureFormatInfo* GetFormatInfo(uint32_t texture_format) {
   const struct TextureFormatInfo* ret = kTextureFormatInfo;
   while (ret->bytes_per_pixel && ret->format != texture_format) {
@@ -458,7 +478,13 @@ static void StoreTextureLayer(const PushBufferCommandTraceInfo* info,
                               uint32_t width, uint32_t height, uint32_t depth,
                               uint32_t pitch, uint32_t format_register,
                               uint32_t format, uint32_t control0,
-                              uint32_t control1, uint32_t image_rect) {
+                              uint32_t control1, uint32_t image_rect,
+                              uint32_t sampler_mode) {
+  if (sampler_mode == PS_TEXTUREMODES_NONE ||
+      sampler_mode == PS_TEXTUREMODES_PASSTHRU) {
+    return;
+  }
+
   const struct TextureFormatInfo* format_info = GetFormatInfo(format);
   if (!format_info->bytes_per_pixel) {
     DbgPrint("Error: failed to look up texture format 0x%X\n", format);
@@ -528,14 +554,18 @@ static void StoreTextureLayer(const PushBufferCommandTraceInfo* info,
   DmFreePool(buffer);
 }
 
+#define TEXTURE_CTRL_ENABLE (1 << 30)
 static void StoreTextureStage(const PushBufferCommandTraceInfo* info,
                               StoreAuxData store, uint32_t stage) {
   // Verify that the stage is enabled.
   uint32_t reg_offset = stage * 4;
   uint32_t control0 = ReadDWORD(PGRAPH_TEXCTL0_0 + reg_offset);
-  if (!(control0 & (1 << 30))) {
+  if (!(control0 & TEXTURE_CTRL_ENABLE)) {
     return;
   }
+
+  // Check the sampler format to ensure that the texture data has meaning.
+  uint32_t sampler_mode = (ReadDWORD(PGRAPH_SHADERPROG) >> (stage * 5)) & 0x1F;
 
   uint32_t offset = ReadDWORD(PGRAPH_TEXOFFSET0 + reg_offset);
   uint32_t control1 = ReadDWORD(PGRAPH_TEXCTL1_0 + reg_offset);
@@ -552,14 +582,16 @@ static void StoreTextureStage(const PushBufferCommandTraceInfo* info,
   uint32_t depth = 1 << depth_shift;
 
   VERBOSE_PRINT(
-      ("Texture %d [0x%08X, %d x %d x %d (pitch register: 0x%X), format 0x%X]",
-       stage, offset, width, height, depth, pitch, (format >> 8) & 0x7F));
+      ("Texture %d [0x%08X, %d x %d x %d (pitch register: 0x%X), format 0x%X] "
+       "Sampler 0x%X",
+       stage, offset, width, height, depth, pitch, (format >> 8) & 0x7F,
+       sampler_mode));
 
   uint32_t adjusted_offset = offset;
   for (uint32_t layer = 0; layer < depth; ++layer) {
     StoreTextureLayer(info, store, stage, layer, adjusted_offset, width, height,
                       depth, pitch, format, texture_type, control0, control1,
-                      image_rect);
+                      image_rect, sampler_mode);
     adjusted_offset += pitch * height;
   }
 }
