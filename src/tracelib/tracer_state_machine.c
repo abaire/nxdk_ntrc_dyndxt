@@ -5,46 +5,10 @@
 #include "pgraph_command_callbacks.h"
 #include "pushbuffer_command.h"
 #include "register_defs.h"
+#include "tracelib/configure.h"
 #include "util/circular_buffer.h"
 #include "xbdm.h"
 #include "xbox_helper.h"
-
-// #define VERBOSE_DEBUG
-// #define EXTRA_VERBOSE_PRINT
-
-#ifdef VERBOSE_DEBUG
-#define VERBOSE_PRINT(c) DbgPrint c
-#else
-#define VERBOSE_PRINT(c)
-#endif
-
-#ifdef EXTRA_VERBOSE_PRINT
-#define EXTRA_VERBOSE_PRINT(c) DbgPrint c
-#else
-#define EXTRA_VERBOSE_PRINT(c)
-#endif
-
-// #define ENABLE_PROFILING
-
-#ifdef ENABLE_PROFILING
-#include "util/profiler.h"
-
-#define PROFILE_INIT() PROFILETOKEN __now
-#define PROFILE_START() __now = ProfileStart()
-#define PROFILE_SEND(msg)                                       \
-  do {                                                          \
-    double __elapsed = ProfileStop(&__now);                     \
-    uint32_t __milliseconds = (uint32_t)__elapsed;              \
-    uint32_t __fractional_milliseconds =                        \
-        (uint32_t)((__elapsed - __milliseconds) * 1000.0);      \
-    DbgPrint("PROFILE>> %s: %u.%u ms\n", (msg), __milliseconds, \
-             __fractional_milliseconds);                        \
-  } while (0)
-#else
-#define PROFILE_INIT()
-#define PROFILE_START()
-#define PROFILE_SEND(msg)
-#endif
 
 #define DEFAULT_PGRAPH_BUFFER_SIZE (1024 * 64)
 #define MIN_PGRAPH_BUFFER_SIZE (256)

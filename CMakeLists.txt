@@ -17,6 +17,26 @@ include(CheckSymbolExists)
 include(ExternalProject)
 include(FindPkgConfig)
 
+option(
+        ENABLE_VERBOSE_DEBUG
+        "Enable verbose runtime debugging messages"
+        OFF
+)
+
+option(
+        ENABLE_EXTRA_VERBOSE_DEBUG
+        "Enable extra-verbose runtime debugging messages"
+        OFF
+)
+
+option(
+        ENABLE_PROFILING
+        "Enable profiling debug messages (may have significant performance impact)"
+        OFF
+)
+
+configure_file("${CMAKE_SOURCE_DIR}/src/tracelib/configure.h.in" src/tracelib/configure.h)
+
 set(CMAKE_C_CREATE_SHARED_LIBRARY "${NXDK_DIR}/bin/${TOOLCHAIN_PREFIX}-link <CMAKE_C_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -out:<TARGET> <LINK_LIBRARIES>")
 set(CMAKE_CXX_CREATE_SHARED_LIBRARY "${NXDK_DIR}/bin/${TOOLCHAIN_PREFIX}-link <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -out:<TARGET> <LINK_LIBRARIES>")
 
@@ -120,6 +140,8 @@ target_include_directories(
         PUBLIC
         src
         third_party
+        "${CMAKE_CURRENT_BINARY_DIR}"
+        "${CMAKE_CURRENT_BINARY_DIR}/src"
         "${NXDK_DIR}"
         "${dyndxt_include_dir}"
 )
