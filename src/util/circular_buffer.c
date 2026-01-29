@@ -6,8 +6,8 @@
 #include "circular_buffer_impl.h"
 #include "fastmemcpy/fastmemcpy.h"
 
-static void Write(CircularBufferImpl *cb, const void *data, uint32_t data_size);
-static void Read(CircularBufferImpl *cb, void *buffer, uint32_t size);
+static void Write(CircularBufferImpl* cb, const void* data, uint32_t data_size);
+static void Read(CircularBufferImpl* cb, void* buffer, uint32_t size);
 
 // Creates a new circular buffer with the given capacity.
 CircularBuffer CBCreate(uint32_t size) {
@@ -16,17 +16,17 @@ CircularBuffer CBCreate(uint32_t size) {
 
 CircularBuffer CBCreateEx(uint32_t size, CBAllocProc alloc_proc,
                           CBFreeProc free_proc) {
-  if (!size) {
+  if (!size || size == UINT32_MAX) {
     return NULL;
   }
 
-  CircularBufferImpl *ret =
-      (CircularBufferImpl *)alloc_proc(sizeof(CircularBufferImpl));
+  CircularBufferImpl* ret =
+      (CircularBufferImpl*)alloc_proc(sizeof(CircularBufferImpl));
   if (!ret) {
     return ret;
   }
 
-  ret->buffer = (uint8_t *)(alloc_proc(size + 1));
+  ret->buffer = (uint8_t*)(alloc_proc(size + 1));
   if (!ret->buffer) {
     free_proc(ret);
     return NULL;
@@ -44,13 +44,13 @@ void CBDestroy(CircularBuffer handle) {
   if (!handle) {
     return;
   }
-  CircularBufferImpl *cb = (CircularBufferImpl *)handle;
+  CircularBufferImpl* cb = (CircularBufferImpl*)handle;
   cb->free_proc(cb->buffer);
   cb->free_proc(cb);
 }
 
 uint32_t CBCapacity(CircularBuffer handle) {
-  CircularBufferImpl *cb = (CircularBufferImpl *)handle;
+  CircularBufferImpl* cb = (CircularBufferImpl*)handle;
   if (!cb) {
     return 0;
   }
@@ -59,7 +59,7 @@ uint32_t CBCapacity(CircularBuffer handle) {
 }
 
 uint32_t CBAvailable(CircularBuffer handle) {
-  CircularBufferImpl *cb = (CircularBufferImpl *)handle;
+  CircularBufferImpl* cb = (CircularBufferImpl*)handle;
   if (!cb) {
     return 0;
   }
@@ -71,7 +71,7 @@ uint32_t CBAvailable(CircularBuffer handle) {
 }
 
 uint32_t CBFreeSpace(CircularBuffer handle) {
-  CircularBufferImpl *cb = (CircularBufferImpl *)handle;
+  CircularBufferImpl* cb = (CircularBufferImpl*)handle;
   if (!cb) {
     return 0;
   }
@@ -84,7 +84,7 @@ uint32_t CBFreeSpace(CircularBuffer handle) {
 }
 
 uint32_t CBDiscard(CircularBuffer handle, uint32_t bytes) {
-  CircularBufferImpl *cb = (CircularBufferImpl *)handle;
+  CircularBufferImpl* cb = (CircularBufferImpl*)handle;
   if (!cb) {
     return 0;
   }
@@ -94,29 +94,35 @@ uint32_t CBDiscard(CircularBuffer handle, uint32_t bytes) {
     bytes = available;
   }
 
-  cb->read = (cb->read + bytes) % cb->size;
+  size_t bytes_to_end = cb->size - cb->read;
+  if (bytes < bytes_to_end) {
+    cb->read += bytes;
+  } else {
+    cb->read = bytes - bytes_to_end;
+  }
+
   return bytes;
 }
 
 void CBClear(CircularBuffer handle) {
-  CircularBufferImpl *cb = (CircularBufferImpl *)handle;
+  CircularBufferImpl* cb = (CircularBufferImpl*)handle;
   if (cb) {
     cb->read = cb->write;
   }
 }
 
-bool CBWrite(CircularBuffer handle, const void *data, uint32_t data_size) {
+bool CBWrite(CircularBuffer handle, const void* data, uint32_t data_size) {
   uint32_t free_space = CBFreeSpace(handle);
   if (free_space < data_size) {
     return false;
   }
-  Write((CircularBufferImpl *)handle, data, data_size);
+  Write((CircularBufferImpl*)handle, data, data_size);
   return true;
 }
 
-uint32_t CBWriteAvailable(CircularBuffer handle, const void *data,
+uint32_t CBWriteAvailable(CircularBuffer handle, const void* data,
                           uint32_t max_size) {
-  CircularBufferImpl *cb = (CircularBufferImpl *)handle;
+  CircularBufferImpl* cb = (CircularBufferImpl*)handle;
   if (!max_size || !cb) {
     return 0;
   }
@@ -130,9 +136,9 @@ uint32_t CBWriteAvailable(CircularBuffer handle, const void *data,
   return max_size;
 }
 
-uint32_t CBReadAvailable(CircularBuffer handle, void *buffer,
+uint32_t CBReadAvailable(CircularBuffer handle, void* buffer,
                          uint32_t max_size) {
-  CircularBufferImpl *cb = (CircularBufferImpl *)handle;
+  CircularBufferImpl* cb = (CircularBufferImpl*)handle;
   if (!max_size || !cb) {
     return 0;
   }
@@ -144,43 +150,45 @@ uint32_t CBReadAvailable(CircularBuffer handle, void *buffer,
   return max_size;
 }
 
-bool CBRead(CircularBuffer handle, void *buffer, uint32_t size) {
+bool CBRead(CircularBuffer handle, void* buffer, uint32_t size) {
   if (!size || CBAvailable(handle) < size) {
     return false;
   }
-  Read((CircularBufferImpl *)handle, buffer, size);
+  Read((CircularBufferImpl*)handle, buffer, size);
   return true;
 }
 
-static void Write(CircularBufferImpl *cb, const void *data,
+static void Write(CircularBufferImpl* cb, const void* data,
                   uint32_t data_size) {
   // data_size will have already been adjusted if the read pointer is ahead of
   // the write, so the only test is against the underlying buffer end.
+  const uint8_t* data_ptr = (const uint8_t*)data;
   uint32_t bytes_to_end = cb->size - cb->write;
   if (bytes_to_end < data_size) {
-    mmx_memcpy(cb->buffer + cb->write, data, bytes_to_end);
-    data += bytes_to_end;
+    mmx_memcpy(cb->buffer + cb->write, data_ptr, bytes_to_end);
+    data_ptr += bytes_to_end;
     cb->write = 0;
     data_size -= bytes_to_end;
   }
 
   if (data_size) {
-    mmx_memcpy(cb->buffer + cb->write, data, data_size);
+    mmx_memcpy(cb->buffer + cb->write, data_ptr, data_size);
     cb->write += data_size;
   }
 }
 
-static void Read(CircularBufferImpl *cb, void *buffer, uint32_t size) {
+static void Read(CircularBufferImpl* cb, void* buffer, uint32_t size) {
   // size will have already been adjusted if the write pointer is ahead of the
   // read, so the only test is against the underlying buffer end.
+  uint8_t* buffer_ptr = (uint8_t*)buffer;
   uint32_t bytes_to_end = cb->size - cb->read;
   if (bytes_to_end < size) {
-    mmx_memcpy(buffer, cb->buffer + cb->read, bytes_to_end);
-    buffer += bytes_to_end;
+    mmx_memcpy(buffer_ptr, cb->buffer + cb->read, bytes_to_end);
+    buffer_ptr += bytes_to_end;
     cb->read = 0;
     size -= bytes_to_end;
   }
 
-  mmx_memcpy(buffer, cb->buffer + cb->read, size);
+  mmx_memcpy(buffer_ptr, cb->buffer + cb->read, size);
   cb->read += size;
 }

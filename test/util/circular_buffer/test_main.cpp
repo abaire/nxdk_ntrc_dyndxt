@@ -10,28 +10,28 @@ static uint8_t test_buffer[1024] = {0};
 
 static size_t total_bytes_allocated = 0;
 static bool free_called = false;
-static std::set<void *> allocations;
+static std::set<void*> allocations;
 
-static void *AllocProc(size_t sz) {
+static void* AllocProc(size_t sz) {
   auto new_head = total_bytes_allocated + sz;
   if (new_head >= sizeof(test_buffer)) {
     return nullptr;
   }
 
-  void *ret = test_buffer + total_bytes_allocated;
+  void* ret = test_buffer + total_bytes_allocated;
   allocations.insert(ret);
   total_bytes_allocated = new_head;
   return ret;
 }
 
-static void FreeProc(void *buf) {
+static void FreeProc(void* buf) {
   auto it = allocations.find(buf);
   BOOST_REQUIRE(it != allocations.end());
   allocations.erase(it);
   free_called = true;
 }
 
-static void PopulateBuffer(uint8_t *buf, size_t len) {
+static void PopulateBuffer(uint8_t* buf, size_t len) {
   for (auto i = 0; i < len; ++i) {
     buf[i] = i & 0xFF;
   }
@@ -409,6 +409,33 @@ BOOST_AUTO_TEST_CASE(after_rolling_cursor_buffer_may_be_filled_to_capacity) {
   BOOST_TEST(value == true);
   BOOST_TEST(CBRead(sut, read_buf, sizeof(read_buf)));
   BOOST_TEST(memcmp(buf, read_buf, sizeof(read_buf)) == 0);
+}
+
+BOOST_AUTO_TEST_CASE(discarding_with_wrap_around_works) {
+  auto sut = CBCreateEx(10, AllocProc, FreeProc);
+  uint8_t buf[8];
+  PopulateBuffer(buf, sizeof(buf));
+  CBWrite(sut, buf, sizeof(buf));
+  // Write 8. Capacity 10. Write index 8. Read index 0.
+
+  // Discard 5. Read index becomes 5.
+  CBDiscard(sut, 5);
+  BOOST_TEST(CBAvailable(sut) == 3);
+
+  // Write 5 more.
+  // Write 5. write index: 8 -> 13 -> 3.
+  CBWrite(sut, buf, 5);
+  BOOST_TEST(CBAvailable(sut) == 8);
+
+  // Discard 6.
+  // Read index: 5 -> 11 -> 1.
+  CBDiscard(sut, 6);
+  BOOST_TEST(CBAvailable(sut) == 2);
+}
+
+BOOST_AUTO_TEST_CASE(create_with_max_uint32_fails) {
+  auto sut = CBCreateEx(UINT32_MAX, AllocProc, FreeProc);
+  BOOST_TEST(sut == nullptr);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
