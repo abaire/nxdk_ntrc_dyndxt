@@ -1,0 +1,41 @@
+#ifndef NTRC_TRACELIB_CONFIGURE_H_IN_H_
+#define NTRC_TRACELIB_CONFIGURE_H_IN_H_
+
+#cmakedefine ENABLE_VERBOSE_DEBUG
+#cmakedefine ENABLE_EXTRA_VERBOSE_DEBUG
+
+#cmakedefine ENABLE_PROFILING
+
+#ifdef ENABLE_VERBOSE_DEBUG
+#define VERBOSE_PRINT(c) DbgPrint c
+#else
+#define VERBOSE_PRINT(c)
+#endif
+
+#ifdef ENABLE_EXTRA_VERBOSE_DEBUG
+#define EXTRA_VERBOSE_PRINT(c) DbgPrint c
+#else
+#define EXTRA_VERBOSE_PRINT(c)
+#endif
+
+#ifdef ENABLE_PROFILING
+#include "util/profiler.h"
+
+#define PROFILE_INIT() PROFILETOKEN __now
+#define PROFILE_START() __now = ProfileStart()
+#define PROFILE_SEND(msg)                                       \
+  do {                                                          \
+    double __elapsed = ProfileStop(&__now);                     \
+    uint32_t __milliseconds = (uint32_t)__elapsed;              \
+    uint32_t __fractional_milliseconds =                        \
+        (uint32_t)((__elapsed - __milliseconds) * 1000.0);      \
+    DbgPrint("PROFILE>> %s: %u.%u ms\n", (msg), __milliseconds, \
+             __fractional_milliseconds);                        \
+  } while (0)
+#else
+#define PROFILE_INIT()
+#define PROFILE_START()
+#define PROFILE_SEND(msg)
+#endif  // ENABLE_PROFILING
+
+#endif // #ifndef NTRC_TRACELIB_CONFIGURE_H_IN_H_

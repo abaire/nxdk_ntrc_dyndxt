@@ -6,39 +6,10 @@
 #include "fastmemcpy/fastmemcpy.h"
 #include "pushbuffer_command.h"
 #include "register_defs.h"
+#include "tracelib/configure.h"
 #include "xbdm.h"
 #include "xbox_helper.h"
 #include "xemu/hw/xbox/nv2a/nv2a_regs.h"
-
-// #define VERBOSE_DEBUG
-
-#ifdef VERBOSE_DEBUG
-#define VERBOSE_PRINT(c) DbgPrint c
-#else
-#define VERBOSE_PRINT(c)
-#endif
-
-// #define ENABLE_PROFILING
-
-#ifdef ENABLE_PROFILING
-#include "util/profiler.h"
-
-#define PROFILE_INIT() PROFILETOKEN __now
-#define PROFILE_START() __now = ProfileStart()
-#define PROFILE_SEND(msg)                                       \
-  do {                                                          \
-    double __elapsed = ProfileStop(&__now);                     \
-    uint32_t __milliseconds = (uint32_t)__elapsed;              \
-    uint32_t __fractional_milliseconds =                        \
-        (uint32_t)((__elapsed - __milliseconds) * 1000.0);      \
-    DbgPrint("PROFILE>> %s: %u.%u ms\n", (msg), __milliseconds, \
-             __fractional_milliseconds);                        \
-  } while (0)
-#else
-#define PROFILE_INIT()
-#define PROFILE_START()
-#define PROFILE_SEND(msg)
-#endif
 
 #define NV_PGRAPH_TILE_XBOX 0xFD400900
 #define NV_PGRAPH_TLIMIT_XBOX 0xFD400904

@@ -5,46 +5,10 @@
 #include "pgraph_command_callbacks.h"
 #include "pushbuffer_command.h"
 #include "register_defs.h"
+#include "tracelib/configure.h"
 #include "util/circular_buffer.h"
 #include "xbdm.h"
 #include "xbox_helper.h"
-
-// #define VERBOSE_DEBUG
-// #define EXTRA_VERBOSE_PRINT
-
-#ifdef VERBOSE_DEBUG
-#define VERBOSE_PRINT(c) DbgPrint c
-#else
-#define VERBOSE_PRINT(c)
-#endif
-
-#ifdef EXTRA_VERBOSE_PRINT
-#define EXTRA_VERBOSE_PRINT(c) DbgPrint c
-#else
-#define EXTRA_VERBOSE_PRINT(c)
-#endif
-
-// #define ENABLE_PROFILING
-
-#ifdef ENABLE_PROFILING
-#include "util/profiler.h"
-
-#define PROFILE_INIT() PROFILETOKEN __now
-#define PROFILE_START() __now = ProfileStart()
-#define PROFILE_SEND(msg)                                       \
-  do {                                                          \
-    double __elapsed = ProfileStop(&__now);                     \
-    uint32_t __milliseconds = (uint32_t)__elapsed;              \
-    uint32_t __fractional_milliseconds =                        \
-        (uint32_t)((__elapsed - __milliseconds) * 1000.0);      \
-    DbgPrint("PROFILE>> %s: %u.%u ms\n", (msg), __milliseconds, \
-             __fractional_milliseconds);                        \
-  } while (0)
-#else
-#define PROFILE_INIT()
-#define PROFILE_START()
-#define PROFILE_SEND(msg)
-#endif
 
 #define DEFAULT_PGRAPH_BUFFER_SIZE (1024 * 64)
 #define MIN_PGRAPH_BUFFER_SIZE (256)
@@ -730,6 +694,8 @@ static void GetMethodProcessors(const PushBufferCommandTraceInfo* method_info,
   }
 }
 
+#define VERBOSE_STALL_MESSAGE_DELAY_LOOPS (8 * 1024 * 1024)
+#define RESEND_NOTIFICATION_DELAY_LOOPS (16 * 1024 * 1024)
 //! Write all of the given data to the given circular buffer.
 static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
                         CRITICAL_SECTION* critical_section, CircularBuffer cb,
@@ -737,6 +703,7 @@ static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
                         uint32_t notify_threshold) {
   PROFILE_INIT();
   PROFILE_START();
+  uint32_t consecutive_sleeps = 0;
   while (len) {
     EnterCriticalSection(critical_section);
     uint32_t bytes_written = CBWriteAvailable(cb, data, len);
@@ -744,13 +711,43 @@ static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
     LeaveCriticalSection(critical_section);
 
     if (bytes_written) {
+#ifdef ENABLE_EXTRA_VERBOSE_DEBUG
+      if (consecutive_sleeps) {
+        EXTRA_VERBOSE_PRINT(
+            ("Circular buffer wrote %u bytes after stalling %d times. %u bytes "
+             "available\n",
+             bytes_written, consecutive_sleeps, bytes_available));
+      }
+#endif
+      consecutive_sleeps = 0;
       len -= bytes_written;
       if (bytes_available >= notify_threshold) {
         notify_bytes_available(bytes_available);
       }
     }
     if (len) {
-      EXTRA_VERBOSE_PRINT(("WriteBuffer: Circular buffer full, sleeping...\n"));
+#ifdef ENABLE_EXTRA_VERBOSE_DEBUG
+      if (!(consecutive_sleeps % VERBOSE_STALL_MESSAGE_DELAY_LOOPS)) {
+        EXTRA_VERBOSE_PRINT(
+            ("WriteBuffer: Circular buffer full, sleeping... [%u consecutive "
+             "stalls]\n",
+             consecutive_sleeps));
+      }
+#endif
+      if (!(++consecutive_sleeps % RESEND_NOTIFICATION_DELAY_LOOPS)) {
+        if (!bytes_available) {
+          DbgPrint(
+              "ERROR - stalled %u loops on filled circular buffer but 0 bytes "
+              "reported available\n",
+              consecutive_sleeps - 1);
+        } else {
+          EXTRA_VERBOSE_PRINT(
+              ("Stalled for %u loops, re-sending notification with %u bytes "
+               "available\n",
+               consecutive_sleeps - 1, bytes_available));
+          notify_bytes_available(bytes_available);
+        }
+      }
       SwitchToThread();
     }
   }
