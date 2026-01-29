@@ -433,6 +433,89 @@ BOOST_AUTO_TEST_CASE(discarding_with_wrap_around_works) {
   BOOST_TEST(CBAvailable(sut) == 2);
 }
 
+BOOST_AUTO_TEST_CASE(null_handle_safety) {
+  BOOST_TEST(CBCapacity(nullptr) == 0);
+  BOOST_TEST(CBAvailable(nullptr) == 0);
+  BOOST_TEST(CBFreeSpace(nullptr) == 0);
+  BOOST_TEST(CBDiscard(nullptr, 10) == 0);
+  BOOST_TEST(CBWriteAvailable(nullptr, "test", 4) == 0);
+  BOOST_TEST(CBReadAvailable(nullptr, nullptr, 4) == 0);
+  BOOST_TEST(CBWrite(nullptr, "test", 4) == false);
+  BOOST_TEST(CBRead(nullptr, nullptr, 4) == false);
+  CBClear(nullptr);    // Should not crash
+  CBDestroy(nullptr);  // Should not crash
+}
+
+BOOST_AUTO_TEST_CASE(zero_length_operations) {
+  auto sut = CBCreateEx(64, AllocProc, FreeProc);
+  uint8_t buf[32];
+
+  BOOST_TEST(CBWrite(sut, buf, 0) == true);
+  BOOST_TEST(CBRead(sut, buf, 0) ==
+             false);  // Implementation returns false for size 0
+  BOOST_TEST(CBWriteAvailable(sut, buf, 0) == 0);
+  BOOST_TEST(CBReadAvailable(sut, buf, 0) == 0);
+}
+
+BOOST_AUTO_TEST_CASE(split_read_across_boundary) {
+  uint32_t capacity = 10;
+  auto sut = CBCreateEx(capacity, AllocProc, FreeProc);
+  uint8_t input[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+
+  // Fill and discard to move read pointer
+  CBWrite(sut, input, 8);
+  CBDiscard(sut, 8);
+  // write pointer is at 8, read pointer is at 8.
+
+  // Write enough to wrap write pointer
+  // Write 5 bytes: 3 bytes to end (8, 9, 10), 2 bytes at start (0, 1)
+  CBWrite(sut, input, 5);
+  // write pointer is at 2. read pointer is at 8.
+
+  uint8_t output[5] = {0};
+  BOOST_REQUIRE(CBRead(sut, output, 5));
+  BOOST_TEST(memcmp(input, output, 5) == 0);
+  BOOST_TEST(CBAvailable(sut) == 0);
+}
+
+BOOST_AUTO_TEST_CASE(write_exactly_to_end_boundary) {
+  uint32_t capacity = 10;
+  auto sut = CBCreateEx(capacity, AllocProc, FreeProc);
+  uint8_t input[10];
+  PopulateBuffer(input, 10);
+
+  // Buffer internal size is 11.
+  // Write 10: write index 0 -> 10.
+  BOOST_TEST(CBWrite(sut, input, 10));
+  BOOST_TEST(CBAvailable(sut) == 10);
+
+  uint8_t output[10];
+  BOOST_TEST(CBRead(sut, output, 10));
+  BOOST_TEST(memcmp(input, output, 10) == 0);
+}
+
+BOOST_AUTO_TEST_CASE(discard_exactly_to_end_boundary) {
+  uint32_t capacity = 10;
+  auto sut = CBCreateEx(capacity, AllocProc, FreeProc);
+  uint8_t input[capacity];
+  PopulateBuffer(input, capacity);
+  CBWrite(sut, input, capacity);
+
+  // Discard 10. read index 0 -> 10.
+  BOOST_TEST(CBDiscard(sut, capacity) == capacity);
+  BOOST_TEST(CBAvailable(sut) == 0);
+
+  // Next write should start at index 10 (end) then wrap to 0.
+  uint8_t wrap_input[5] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE};
+  BOOST_TEST(CBWrite(sut, wrap_input, 5));
+  BOOST_TEST(CBAvailable(sut) == 5);
+
+  uint8_t output[5] = {0};
+  BOOST_REQUIRE(CBRead(sut, output, 5));
+  BOOST_TEST(memcmp(wrap_input, output, 5) == 0);
+  BOOST_TEST(CBAvailable(sut) == 0);
+}
+
 BOOST_AUTO_TEST_CASE(create_with_max_uint32_fails) {
   auto sut = CBCreateEx(UINT32_MAX, AllocProc, FreeProc);
   BOOST_TEST(sut == nullptr);
