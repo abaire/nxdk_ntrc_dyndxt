@@ -423,12 +423,12 @@ BOOST_AUTO_TEST_CASE(discarding_with_wrap_around_works) {
   BOOST_TEST(CBAvailable(sut) == 3);
 
   // Write 5 more.
-  // Write 5. write index: 8 -> 13 -> 3.
+  // Write 5. write index: 8 -> (8+5)%11 -> 2.
   CBWrite(sut, buf, 5);
   BOOST_TEST(CBAvailable(sut) == 8);
 
   // Discard 6.
-  // Read index: 5 -> 11 -> 1.
+  // Read index: 5 -> (5+6)%11 -> 0.
   CBDiscard(sut, 6);
   BOOST_TEST(CBAvailable(sut) == 2);
 }

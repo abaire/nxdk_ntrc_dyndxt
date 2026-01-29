@@ -60,7 +60,11 @@ jobs:
       - name: Test
         run: |
           cd nxdk_ntrc_dyndxt
-          ctest --test-dir build --output-on-failure
+          export NXDK_DIR="${GITHUB_WORKSPACE}/nxdk"
+          export CMAKE_OPTS="-DBUILD_TESTING=ON"
+          cmake -B build_test -DCMAKE_BUILD_TYPE=Release "${CMAKE_OPTS}"
+          cmake --build build_test --target ntrc_dyndxt_tests -- -j$(grep -c processor /proc/cpuinfo)
+          ctest --test-dir build_test/ntrc_dyndxt_tests --output-on-failure
 
   BuildMacOS:
     name: Build macOS
@@ -112,4 +116,8 @@ jobs:
       - name: Test
         run: |
           cd nxdk_ntrc_dyndxt
-          ctest --test-dir build --output-on-failure
+          export NXDK_DIR="${GITHUB_WORKSPACE}/nxdk"
+          export CMAKE_OPTS="-DBUILD_TESTING=ON"
+          cmake -B build_test -DCMAKE_BUILD_TYPE=Release "${CMAKE_OPTS}"
+          cmake --build build_test --target ntrc_dyndxt_tests -- -j$(sysctl -n hw.ncpu)
+          ctest --test-dir build_test/ntrc_dyndxt_tests --output-on-failure
