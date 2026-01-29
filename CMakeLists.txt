@@ -3,6 +3,10 @@ project(ntrc_dyndxt)
 
 option(BUILD_TESTING "Build the tests for this project" ON)
 
+if (NOT NXDK AND NOT BUILD_TESTING)
+    message(FATAL_ERROR "The nxdk toolchain is required to build this project. Use -DCMAKE_TOOLCHAIN_FILE=\${NXDK_DIR}/share/toolchain-nxdk.cmake")
+endif ()
+
 set_property(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
 set(CMAKE_SHARED_LIBRARY_SUFFIX ".dll")
 set(CMAKE_SHARED_LIBRARY_SUFFIX_C ".dll")
@@ -40,8 +44,10 @@ configure_file("${CMAKE_SOURCE_DIR}/src/tracelib/configure.h.in" src/tracelib/co
 set(CMAKE_C_CREATE_SHARED_LIBRARY "${NXDK_DIR}/bin/${TOOLCHAIN_PREFIX}-link <CMAKE_C_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -out:<TARGET> <LINK_LIBRARIES>")
 set(CMAKE_CXX_CREATE_SHARED_LIBRARY "${NXDK_DIR}/bin/${TOOLCHAIN_PREFIX}-link <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -out:<TARGET> <LINK_LIBRARIES>")
 
-add_subdirectory(devhost)
-add_subdirectory(third_party/fastmemcpy)
+if (NXDK)
+    add_subdirectory(devhost)
+    add_subdirectory(third_party/fastmemcpy)
+endif ()
 
 # The tests are built using the host toolchain rather than the target (nxdk).
 if (BUILD_TESTING)
@@ -56,7 +62,8 @@ if (BUILD_TESTING)
     )
 endif ()
 
-# Import the dynamic DXT loader, which provides some shared functions.
+if (NXDK)
+    # Import the dynamic DXT loader, which provides some shared functions.
 ExternalProject_Add(
         dyndxt_loader
         GIT_REPOSITORY https://github.com/abaire/nxdk_dyndxt.git
@@ -269,3 +276,5 @@ install(
         DESTINATION
         include
 )
+
+endif ()
