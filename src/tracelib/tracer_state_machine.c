@@ -701,6 +701,9 @@ static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
                         uint32_t notify_threshold) {
   PROFILE_INIT();
   PROFILE_START();
+#ifdef ENABLE_EXTRA_VERBOSE_DEBUG
+  uint32_t consecutive_sleeps = 0;
+#endif
   while (len) {
     EnterCriticalSection(critical_section);
     uint32_t bytes_written = CBWriteAvailable(cb, data, len);
@@ -708,13 +711,24 @@ static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
     LeaveCriticalSection(critical_section);
 
     if (bytes_written) {
+#ifdef ENABLE_EXTRA_VERBOSE_DEBUG
+      EXTRA_VERBOSE_PRINT(
+          ("Circular buffer wrote %u bytes after stalling %d times\n",
+           bytes_written, consecutive_sleeps));
+      consecutive_sleeps = 0;
+#endif
       len -= bytes_written;
       if (bytes_available >= notify_threshold) {
         notify_bytes_available(bytes_available);
       }
     }
     if (len) {
-      EXTRA_VERBOSE_PRINT(("WriteBuffer: Circular buffer full, sleeping...\n"));
+#ifdef ENABLE_EXTRA_VERBOSE_DEBUG
+      if (!(consecutive_sleeps++ % 30)) {
+        EXTRA_VERBOSE_PRINT(
+            ("WriteBuffer: Circular buffer full, sleeping...\n"));
+      }
+#endif
       SwitchToThread();
     }
   }
