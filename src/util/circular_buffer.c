@@ -112,6 +112,9 @@ void CBClear(CircularBuffer handle) {
 }
 
 bool CBWrite(CircularBuffer handle, const void* data, uint32_t data_size) {
+  if (!handle) {
+    return false;
+  }
   uint32_t free_space = CBFreeSpace(handle);
   if (free_space < data_size) {
     return false;
@@ -151,7 +154,7 @@ uint32_t CBReadAvailable(CircularBuffer handle, void* buffer,
 }
 
 bool CBRead(CircularBuffer handle, void* buffer, uint32_t size) {
-  if (!size || CBAvailable(handle) < size) {
+  if (!handle || !size || CBAvailable(handle) < size) {
     return false;
   }
   Read((CircularBufferImpl*)handle, buffer, size);
