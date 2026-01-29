@@ -694,7 +694,8 @@ static void GetMethodProcessors(const PushBufferCommandTraceInfo* method_info,
   }
 }
 
-#define RESEND_NOTIFICATION_DELAY 2048
+#define VERBOSE_STALL_MESSAGE_DELAY_LOOPS (8 * 1024 * 1024)
+#define RESEND_NOTIFICATION_DELAY_LOOPS (16 * 1024 * 1024)
 //! Write all of the given data to the given circular buffer.
 static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
                         CRITICAL_SECTION* critical_section, CircularBuffer cb,
@@ -711,12 +712,14 @@ static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
 
     if (bytes_written) {
 #ifdef ENABLE_EXTRA_VERBOSE_DEBUG
-      EXTRA_VERBOSE_PRINT(
-          ("Circular buffer wrote %u bytes after stalling %d times. %u bytes "
-           "available\n",
-           bytes_written, consecutive_sleeps, bytes_available));
-      consecutive_sleeps = 0;
+      if (consecutive_sleeps) {
+        EXTRA_VERBOSE_PRINT(
+            ("Circular buffer wrote %u bytes after stalling %d times. %u bytes "
+             "available\n",
+             bytes_written, consecutive_sleeps, bytes_available));
+      }
 #endif
+      consecutive_sleeps = 0;
       len -= bytes_written;
       if (bytes_available >= notify_threshold) {
         notify_bytes_available(bytes_available);
@@ -724,13 +727,26 @@ static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
     }
     if (len) {
 #ifdef ENABLE_EXTRA_VERBOSE_DEBUG
-      if (!(consecutive_sleeps % 30)) {
+      if (!(consecutive_sleeps % VERBOSE_STALL_MESSAGE_DELAY_LOOPS)) {
         EXTRA_VERBOSE_PRINT(
-            ("WriteBuffer: Circular buffer full, sleeping...\n"));
+            ("WriteBuffer: Circular buffer full, sleeping... [%u consecutive "
+             "stalls]\n",
+             consecutive_sleeps));
       }
 #endif
-      if (!(++consecutive_sleeps % RESEND_NOTIFICATION_DELAY)) {
-        notify_bytes_available(bytes_available);
+      if (!(++consecutive_sleeps % RESEND_NOTIFICATION_DELAY_LOOPS)) {
+        if (!bytes_available) {
+          DbgPrint(
+              "ERROR - stalled %u loops on filled circular buffer but 0 bytes "
+              "reported available\n",
+              consecutive_sleeps - 1);
+        } else {
+          EXTRA_VERBOSE_PRINT(
+              ("Stalled for %u loops, re-sending notification with %u bytes "
+               "available\n",
+               consecutive_sleeps - 1, bytes_available));
+          notify_bytes_available(bytes_available);
+        }
       }
       SwitchToThread();
     }
