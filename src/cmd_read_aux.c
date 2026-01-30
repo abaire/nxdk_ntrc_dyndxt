@@ -6,7 +6,7 @@
 #include "tracelib/tracer_state_machine.h"
 #include "xbdm_util.h"
 
-#define BUFFER_SIZE (1024 * 1024)
+#define BUFFER_SIZE (1024 * 1024 + 4)
 
 HRESULT HandleReadAux(const char* command, char* response,
                       uint32_t response_len, CommandContext* ctx) {
