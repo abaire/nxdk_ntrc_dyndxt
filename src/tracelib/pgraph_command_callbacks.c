@@ -274,14 +274,6 @@ static void StoreSurface(const PushBufferCommandTraceInfo* info,
 
 void TraceSurfaces(const PushBufferCommandTraceInfo* info, TraceContext* ctx,
                    StoreAuxData store, const AuxConfig* config) {
-  if (config->raw_pgraph_capture_enabled) {
-    StorePGRAPH(info, store);
-  }
-
-  if (config->raw_pfb_capture_enabled) {
-    StorePFB(info, store);
-  }
-
   if (!config->surface_color_capture_enabled &&
       !config->surface_depth_capture_enabled) {
     return;
@@ -614,5 +606,14 @@ void TraceEnd(const PushBufferCommandTraceInfo* info, TraceContext* ctx,
   DbgPrint("END - Packet: %d Draw: %u Surface: %u\n", info->packet_index,
            info->draw_index, info->surface_dump_index);
   ++ctx->draw_index;
+
+  if (config->raw_pgraph_capture_enabled) {
+    StorePGRAPH(info, store);
+  }
+
+  if (config->raw_pfb_capture_enabled) {
+    StorePFB(info, store);
+  }
+
   TraceSurfaces(info, ctx, store, config);
 }

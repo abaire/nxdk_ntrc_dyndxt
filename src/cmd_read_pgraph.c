@@ -6,7 +6,7 @@
 #include "tracelib/tracer_state_machine.h"
 #include "xbdm_util.h"
 
-#define READ_BUFFER_SIZE (1024 * 64)
+#define READ_BUFFER_SIZE (1024 * 128 + 4)
 
 HRESULT HandleReadPGRAPH(const char* command, char* response,
                          uint32_t response_len, CommandContext* ctx) {

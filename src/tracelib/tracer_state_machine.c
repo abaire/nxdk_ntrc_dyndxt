@@ -10,11 +10,11 @@
 #include "xbdm.h"
 #include "xbox_helper.h"
 
-#define DEFAULT_PGRAPH_BUFFER_SIZE (1024 * 64)
-#define MIN_PGRAPH_BUFFER_SIZE (256)
+#define DEFAULT_PGRAPH_BUFFER_SIZE (1024 * 512)
+#define MIN_PGRAPH_BUFFER_SIZE (1024)
 //! The percentage of the PGRAPH circular buffer that must be filled before a
 //! notification is sent.
-#define PGRAPH_NOTIFY_PERCENT 0.8f
+#define PGRAPH_NOTIFY_PERCENT 0.5f
 #define DEFAULT_AUX_BUFFER_SIZE (1024 * 1024 * 4)
 #define MIN_AUX_BUFFER_SIZE (1024 * 512)
 
@@ -625,7 +625,7 @@ static void RunFIFO(uint32_t pull_addr_target) {
 
     // Disable PGRAPH, so it can't run anything from CACHE.
     DisablePGRAPHFIFO();
-    BusyWaitUntilPGRAPHIdle();
+    BusyWaitUntilCACHE1Empty();
 
     // This scope should be atomic.
     // FIXME: Avoid running bad code if PUT was modified during this command.
@@ -715,11 +715,12 @@ static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
       if (consecutive_sleeps) {
         EXTRA_VERBOSE_PRINT(
             ("Circular buffer wrote %u bytes after stalling %d times. %u bytes "
-             "available\n",
-             bytes_written, consecutive_sleeps, bytes_available));
+             "available in buffer 0x%X\n",
+             bytes_written, consecutive_sleeps, bytes_available, cb));
       }
 #endif
       consecutive_sleeps = 0;
+      data += bytes_written;
       len -= bytes_written;
       if (bytes_available >= notify_threshold) {
         notify_bytes_available(bytes_available);
@@ -730,8 +731,8 @@ static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
       if (!(consecutive_sleeps % VERBOSE_STALL_MESSAGE_DELAY_LOOPS)) {
         EXTRA_VERBOSE_PRINT(
             ("WriteBuffer: Circular buffer full, sleeping... [%u consecutive "
-             "stalls]\n",
-             consecutive_sleeps));
+             "stalls for buffer 0x%X]\n",
+             consecutive_sleeps, cb));
       }
 #endif
       if (!(++consecutive_sleeps % RESEND_NOTIFICATION_DELAY_LOOPS)) {
@@ -743,8 +744,8 @@ static void WriteBuffer(NotifyBytesAvailableHandler notify_bytes_available,
         } else {
           EXTRA_VERBOSE_PRINT(
               ("Stalled for %u loops, re-sending notification with %u bytes "
-               "available\n",
-               consecutive_sleeps - 1, bytes_available));
+               "available in buffer 0x%X\n",
+               consecutive_sleeps - 1, bytes_available, cb));
           notify_bytes_available(bytes_available);
         }
       }
@@ -760,8 +761,10 @@ static void LogAuxData(const PushBufferCommandTraceInfo* trigger,
     return;
   }
 
-  AuxDataHeader header = {trigger->packet_index, trigger->draw_index, type,
-                          len};
+  AuxDataHeader header = {.packet_index = trigger->packet_index,
+                          .draw_index = trigger->draw_index,
+                          .data_type = type,
+                          .len = len};
   WriteBuffer(state_machine.on_aux_buffer_bytes_available,
               &state_machine.aux_critical_section, state_machine.aux_buffer,
               &header, sizeof(header), 0);
@@ -822,6 +825,7 @@ static uint32_t ProcessPushBufferCommand(
       if (*dma_pull_addr == state_machine.real_dma_push_addr) {
         DbgPrint("ERROR: Bad state in ProcessPushBufferCommand: 0x%X != 0x%X\n",
                  *dma_pull_addr, state_machine.real_dma_push_addr);
+        DeletePushBufferCommandTraceInfo(method_info);
         return 0xFFFFFFFF;
       }
 
@@ -887,6 +891,7 @@ static BOOL PeekAheadForFlipStall(BOOL* found, uint32_t dma_pull_addr,
     if (peek_unprocessed_bytes == 0xFFFFFFFF) {
       DbgPrint("ERROR: Failed to process pbuffer command during seek.\n");
       SetState(STATE_FATAL_PROCESS_PUSH_BUFFER_COMMAND_FAILED);
+      DeletePushBufferCommandTraceInfo(&info);
       return FALSE;
     }
 
@@ -936,7 +941,7 @@ static void TraceUntilFramebufferFlip(BOOL discard, BOOL allow_start_in_frame) {
   PROFILE_INIT();
 
   while (TracerGetState() == working_state) {
-    PushBufferCommandTraceInfo info;
+    PushBufferCommandTraceInfo info = {0};
     info.subroutine_return_address = 0;
     info.packet_index = command_index++;
     info.draw_index = ctx.draw_index;
@@ -950,6 +955,7 @@ static void TraceUntilFramebufferFlip(BOOL discard, BOOL allow_start_in_frame) {
     if (unprocessed_bytes == 0xFFFFFFFF) {
       SetState(STATE_FATAL_PROCESS_PUSH_BUFFER_COMMAND_FAILED);
       CompleteRequest();
+      DeletePushBufferCommandTraceInfo(&info);
       return;
     }
     bytes_queued += unprocessed_bytes;
@@ -980,6 +986,7 @@ static void TraceUntilFramebufferFlip(BOOL discard, BOOL allow_start_in_frame) {
         if (!PeekAheadForFlipStall(&flip_found, dma_pull_addr,
                                    real_dma_push_addr)) {
           CompleteRequest();
+          DeletePushBufferCommandTraceInfo(&info);
           return;
         }
         is_flip = !flip_found;
@@ -1026,6 +1033,7 @@ static void TraceUntilFramebufferFlip(BOOL discard, BOOL allow_start_in_frame) {
             dma_pull_addr_real, dma_pull_addr);
         SetState(STATE_FATAL_DISCARDING_FAILED);
         CompleteRequest();
+        DeletePushBufferCommandTraceInfo(&info);
         return;
       }
     }
@@ -1037,6 +1045,7 @@ static void TraceUntilFramebufferFlip(BOOL discard, BOOL allow_start_in_frame) {
     if (is_flip) {
       SetState(STATE_IDLE_NEW_FRAME);
       CompleteRequest();
+      DeletePushBufferCommandTraceInfo(&info);
       return;
     }
 
@@ -1048,6 +1057,7 @@ static void TraceUntilFramebufferFlip(BOOL discard, BOOL allow_start_in_frame) {
             DbgPrint("Permanent stall detected, aborting...\n");
             SetState(STATE_FATAL_PERMANENT_STALL);
             CompleteRequest();
+            DeletePushBufferCommandTraceInfo(&info);
             return;
           }
           DbgPrint(
@@ -1093,6 +1103,7 @@ static void TraceUntilFramebufferFlip(BOOL discard, BOOL allow_start_in_frame) {
       }
 #endif
     }
+    DeletePushBufferCommandTraceInfo(&info);
   }
 }
 
