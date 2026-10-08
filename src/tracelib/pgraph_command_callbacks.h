@@ -21,6 +21,8 @@ typedef enum AuxDataType {
   ADT_SURFACE,
   //! A texture.
   ADT_TEXTURE,
+  //! A palette for an indexed texture.
+  ADT_PALETTE,
 } AuxDataType;
 
 //! Header describing an entry in the auxiliary data stream.
@@ -97,6 +99,14 @@ typedef struct SurfaceHeader {
   ImageSaveContext save_context;
 } __attribute((packed)) SurfaceHeader;
 
+//! Header describing palette data.
+typedef struct PaletteHeader {
+  uint32_t stage;
+  uint32_t layer;
+  uint32_t len;
+  ImageSaveContext save_context;
+} __attribute((packed)) PaletteHeader;
+
 //! Header describing texture data.
 typedef struct TextureHeader {
   //! The texture unit/stage that this texture is associated with.
@@ -160,20 +170,20 @@ typedef struct TraceContext {
 //! \param type - The type of the buffer.
 //! \param data - The data to send.
 //! \param len - The length of `data`.
-typedef void (*StoreAuxData)(const PushBufferCommandTraceInfo *trigger,
-                             AuxDataType type, const void *data, uint32_t len);
+typedef void (*StoreAuxData)(const PushBufferCommandTraceInfo* trigger,
+                             AuxDataType type, const void* data, uint32_t len);
 
 //! Dump color/depth surfaces, shader data, etc...
-void TraceSurfaces(const PushBufferCommandTraceInfo *info, TraceContext *ctx,
-                   StoreAuxData store, const AuxConfig *config);
+void TraceSurfaces(const PushBufferCommandTraceInfo* info, TraceContext* ctx,
+                   StoreAuxData store, const AuxConfig* config);
 
 //! Dump textures.
-void TraceBegin(const PushBufferCommandTraceInfo *info, TraceContext *ctx,
-                StoreAuxData store, const AuxConfig *config);
+void TraceBegin(const PushBufferCommandTraceInfo* info, TraceContext* ctx,
+                StoreAuxData store, const AuxConfig* config);
 
 //! Dump surfaces.
-void TraceEnd(const PushBufferCommandTraceInfo *info, TraceContext *ctx,
-              StoreAuxData store, const AuxConfig *config);
+void TraceEnd(const PushBufferCommandTraceInfo* info, TraceContext* ctx,
+              StoreAuxData store, const AuxConfig* config);
 
 #ifdef __cplusplus
 }  // extern "C"
