@@ -483,6 +483,39 @@ static void StoreTextureLayer(const PushBufferCommandTraceInfo* info,
         stage, layer, width, height, pitch);
     return;
   }
+
+  if (format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8) {
+    uint32_t palette_len = 0;
+    uint32_t palette_reg =
+        ReadDWORD(_PGRAPH_ADDR(NV_PGRAPH_TEXPALETTE0) + stage * 4);
+    uint32_t length_val = (palette_reg & NV_PGRAPH_TEXPALETTE0_LENGTH) >> 2;
+    if (length_val == 0)
+      palette_len = 256 * 4;
+    else if (length_val == 1)
+      palette_len = 128 * 4;
+    else if (length_val == 2)
+      palette_len = 64 * 4;
+    else if (length_val == 3)
+      palette_len = 32 * 4;
+    uint32_t palette_offset = palette_reg & NV_PGRAPH_TEXPALETTE0_OFFSET;
+
+    uint32_t pal_buffer_size = sizeof(PaletteHeader) + palette_len;
+    uint8_t* pal_buffer =
+        (uint8_t*)DmAllocatePoolWithTag(pal_buffer_size, kTag);
+    if (pal_buffer) {
+      PaletteHeader* pal_header = (PaletteHeader*)pal_buffer;
+      pal_header->stage = stage;
+      pal_header->layer = layer;
+      pal_header->len = palette_len;
+      pal_header->save_context.provoking_command = info->command.method;
+      pal_header->save_context.draw_index = info->draw_index;
+      pal_header->save_context.surface_dump_index = info->surface_dump_index;
+      mmx_memcpy(pal_buffer + sizeof(*pal_header), AGP_ADDR(palette_offset),
+                 palette_len);
+      store(info, ADT_PALETTE, pal_buffer, pal_buffer_size);
+      DmFreePool(pal_buffer);
+    }
+  }
   uint32_t buffer_size = sizeof(TextureHeader) + len;
 
   uint8_t* buffer = (uint8_t*)DmAllocatePoolWithTag(buffer_size, kTag);
